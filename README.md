@@ -48,12 +48,30 @@
 
 ## 📦 Releases
 
-Binaries and installers for the latest release are available from the GitHub Releases page.
+Binaries, installers, checksums, and a portable ZIP for the latest release are published on the GitHub Releases page.
 
 - **Latest release:** v0.1.0
 - Download (Windows EXE): https://github.com/jalal-haidar/gitswitch/releases/download/v0.1.0/gitswitch_0.1.0_x64-setup.exe
 - Download (Windows MSI): https://github.com/jalal-haidar/gitswitch/releases/download/v0.1.0/gitswitch_0.1.0_x64_en-US.msi
+- Portable ZIP (contains installers + checksums): https://github.com/jalal-haidar/gitswitch/releases/download/v0.1.0/gitswitch_0.1.0.zip
+- SHA256 checksums:
+    - https://github.com/jalal-haidar/gitswitch/releases/download/v0.1.0/gitswitch_0.1.0_x64-setup.exe.sha256
+    - https://github.com/jalal-haidar/gitswitch/releases/download/v0.1.0/gitswitch_0.1.0_x64_en-US.msi.sha256
 
-You can also visit the releases page to see all published artifacts:
+Verification
+ - PowerShell (Windows):
+     ```powershell
+     Get-FileHash -Algorithm SHA256 <path-to-file>
+     ```
+ - macOS / Linux:
+     ```bash
+     shasum -a 256 <file>
+     ```
+
+Signing
+ - These installers may be unsigned. Signing verifies publisher identity and reduces SmartScreen/AV warnings.
+ - To provide signed installers, obtain a code-signing certificate and sign in CI or locally (e.g., `signtool.exe` on Windows). If you want, I can help add signing to the CI workflow once you have a certificate.
+
+Visit the releases page for archives and older artifacts:
 
 https://github.com/jalal-haidar/gitswitch/releases
