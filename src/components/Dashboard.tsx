@@ -1,24 +1,44 @@
-import React, { useEffect } from 'react';
-import { Plus, Users, RefreshCw } from 'lucide-react';
-import { useProfileStore } from '../stores/useProfileStore';
-import { ProfileCard } from './ProfileCard';
-import DetectedProfilesList from './DetectedProfilesList';
+import React, { useEffect } from "react";
+import { Plus, Users, RefreshCw } from "lucide-react";
+import { useProfileStore } from "../stores/useProfileStore";
+import { useToast } from "./ui/useToast";
+import { normalizeBackendError } from "../utils/error";
+import { ProfileCard } from "./ProfileCard";
+import DetectedProfilesList from "./DetectedProfilesList";
 
 export const Dashboard: React.FC = () => {
-  const { profiles, loading, fetchProfiles, addProfile } = useProfileStore();
+  const {
+    profiles,
+    loading,
+    fetchProfiles,
+    addProfile,
+    detectIdentities,
+    detectLoading,
+  } = useProfileStore();
 
   useEffect(() => {
     fetchProfiles();
   }, [fetchProfiles]);
 
+  const toast = useToast();
+
   const handleAddDemo = () => {
     addProfile({
-      label: 'Personal',
-      name: 'John Doe',
-      email: 'john@doe.com',
-      color: '#7C3AED',
-      isDefault: true
+      label: "Personal",
+      name: "John Doe",
+      email: "john@doe.com",
+      color: "#7C3AED",
+      isDefault: true,
     });
+  };
+
+  const handleDetectClick = async () => {
+    try {
+      await detectIdentities();
+    } catch (e: any) {
+      const info = normalizeBackendError(e?.toString?.() ?? e);
+      toast.show({ message: info.message, kind: 'error', duration: info.hint ? 8000 : 6000 });
+    }
   };
 
   return (
@@ -32,16 +52,21 @@ export const Dashboard: React.FC = () => {
         <div className="section-header">
           <h2>Your Profiles</h2>
           <div className="section-actions">
-            <button className="btn btn-ghost" onClick={() => useProfileStore.getState().detectIdentities()} title="Detect identities">
-              <RefreshCw size={16} /> Detect
+            <button
+              className="btn btn-ghost"
+              onClick={() => detectIdentities()}
+              title="Detect identities"
+              disabled={detectLoading}
+            >
+              <RefreshCw size={16} /> {detectLoading ? "Scanning…" : "Detect"}
+            <button
+              className="btn btn-ghost"
+              onClick={handleDetectClick}
+              title="Detect identities"
+              disabled={detectLoading}
+            >
+              <RefreshCw size={16} /> {detectLoading ? 'Scanning…' : 'Detect'}
             </button>
-            <button className="btn btn-primary" onClick={handleAddDemo}>
-              <Plus size={18} /> New Profile
-            </button>
-          </div>
-        </div>
-
-        {loading ? (
           <div className="empty-state">Loading your profiles...</div>
         ) : profiles.length === 0 ? (
           <div className="glass-panel empty-state">
@@ -51,18 +76,18 @@ export const Dashboard: React.FC = () => {
         ) : (
           <div className="profile-list">
             {profiles.map((profile) => (
-              <ProfileCard 
-                key={profile.id} 
-                profile={profile} 
-                isActive={profile.isDefault} 
+              <ProfileCard
+                key={profile.id}
+                profile={profile}
+                isActive={profile.isDefault}
               />
             ))}
           </div>
         )}
-      
-      <section style={{ marginTop: 24 }}>
-        <DetectedProfilesList />
-      </section>
+
+        <section style={{ marginTop: 24 }}>
+          <DetectedProfilesList />
+        </section>
       </section>
     </div>
   );

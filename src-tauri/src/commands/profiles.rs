@@ -4,6 +4,7 @@ use uuid::Uuid;
 
 use crate::config::store;
 use crate::models::{AppConfig, GitProfile};
+use crate::errors::BackendError;
 
 #[tauri::command]
 pub fn get_profiles(app: AppHandle) -> Result<Vec<GitProfile>, String> {
@@ -140,15 +141,26 @@ pub fn apply_identity(_app: AppHandle, name: String, email: String, gpg_key: Opt
 }
 
 fn execute_git_command(args: Vec<&str>) -> Result<(), String> {
-    let output = Command::new("git")
-        .args(&args)
-        .output()
-        .map_err(|e| format!("Failed to execute git command: {}", e))?;
-        
+    // Try to spawn `git` and handle common errors with structured hints
+    let output = Command::new("git").args(&args).output().map_err(|e| {
+        // If git isn't found on PATH, return a helpful BackendError serialized to string
+        if e.kind() == std::io::ErrorKind::NotFound {
+            BackendError::git_not_found().to_string()
+        } else {
+            BackendError::io_error(format!("Failed to execute git command: {}", e)).to_string()
+        }
+    })?;
+
     if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("Git command failed: {}", stderr));
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        // Detect permission denied
+        let stderr_l = stderr.to_lowercase();
+        if stderr_l.contains("permission denied") || stderr_l.contains("cannot open") {
+            return Err(BackendError::permission_denied(stderr).to_string());
+        }
+
+        return Err(BackendError::git_failed(stderr).to_string());
     }
-    
+
     Ok(())
 }

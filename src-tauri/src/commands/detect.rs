@@ -1,5 +1,6 @@
 use tauri::AppHandle;
 use std::{process::Command, fs, env, path::Path};
+use crate::errors::BackendError;
 use uuid::Uuid;
 
 use crate::models::GitProfile;
@@ -12,38 +13,65 @@ pub fn detect_identities(_app: AppHandle, directory: Option<String>) -> Result<V
         .unwrap_or_else(|| String::new());
     let path = if dir.is_empty() { Path::new(".") } else { Path::new(&dir) };
 
-    // Helper to run git and capture stdout as trimmed string
-    let run_git = |args: &[&str]| -> Option<String> {
-        Command::new("git")
-            .args(args)
-            .current_dir(path)
-            .output()
-            .ok()
-            .and_then(|o| {
-                if o.status.success() {
-                    let s = String::from_utf8_lossy(&o.stdout).trim().to_string();
-                    if s.is_empty() { None } else { Some(s) }
-                } else {
-                    None
-                }
-            })
+    // Helper to run git and capture stdout as trimmed string, returning detailed error on failure
+    let run_git = |args: &[&str]| -> Result<Option<String>, BackendError> {
+        let output = Command::new("git").args(args).current_dir(path).output().map_err(|e| {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                BackendError::git_not_found()
+            } else {
+                BackendError::io_error(format!("failed to spawn git: {}", e))
+            }
+        })?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+            // Map permission-related errors
+            let stderr_l = stderr.to_lowercase();
+            if stderr_l.contains("permission denied") || stderr_l.contains("cannot open") {
+                return Err(BackendError::permission_denied(stderr));
+            }
+            return Err(BackendError::git_failed(stderr));
+        }
+
+        let s = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if s.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(s))
+        }
     };
 
     // Try local (repo) values first, fall back to global
-    let name = run_git(&["config", "user.name"]).or_else(|| {
-        Command::new("git").args(&["config", "--global", "--get", "user.name"]).output().ok()
-            .and_then(|o| if o.status.success() { Some(String::from_utf8_lossy(&o.stdout).trim().to_string()) } else { None })
-    }).unwrap_or_default();
+    // Try local (repo) values first, fall back to global
+    let name = match run_git(&["config", "user.name"]) {
+        Ok(Some(v)) => v,
+        Ok(None) => match run_git(&["config", "--global", "--get", "user.name"]) {
+            Ok(Some(v)) => v,
+            Ok(None) => String::new(),
+            Err(e) => return Err(e.to_string()),
+        },
+        Err(e) => return Err(e.to_string()),
+    };
 
-    let email = run_git(&["config", "user.email"]).or_else(|| {
-        Command::new("git").args(&["config", "--global", "--get", "user.email"]).output().ok()
-            .and_then(|o| if o.status.success() { Some(String::from_utf8_lossy(&o.stdout).trim().to_string()) } else { None })
-    }).unwrap_or_default();
+    let email = match run_git(&["config", "user.email"]) {
+        Ok(Some(v)) => v,
+        Ok(None) => match run_git(&["config", "--global", "--get", "user.email"]) {
+            Ok(Some(v)) => v,
+            Ok(None) => String::new(),
+            Err(e) => return Err(e.to_string()),
+        },
+        Err(e) => return Err(e.to_string()),
+    };
 
-    let signingkey = run_git(&["config", "user.signingkey"]).or_else(|| {
-        Command::new("git").args(&["config", "--global", "--get", "user.signingkey"]).output().ok()
-            .and_then(|o| if o.status.success() { Some(String::from_utf8_lossy(&o.stdout).trim().to_string()) } else { None })
-    }).unwrap_or_default();
+    let signingkey = match run_git(&["config", "user.signingkey"]) {
+        Ok(Some(v)) => v,
+        Ok(None) => match run_git(&["config", "--global", "--get", "user.signingkey"]) {
+            Ok(Some(v)) => v,
+            Ok(None) => String::new(),
+            Err(e) => return Err(e.to_string()),
+        },
+        Err(e) => return Err(e.to_string()),
+    };
 
     // Detect simple SSH key presence in ~/.ssh (look for common private key names)
     let home = env::var("HOME").or_else(|_| env::var("USERPROFILE")).unwrap_or_default();

@@ -1,5 +1,5 @@
-import { create } from 'zustand';
-import { invoke } from '@tauri-apps/api/core';
+import { create } from "zustand";
+import { invoke } from "@tauri-apps/api/core";
 
 export interface GitProfile {
   id: string;
@@ -20,8 +20,11 @@ interface ProfileState {
   detectLoading: boolean;
   detectError: string | null;
   fetchProfiles: () => Promise<void>;
-  addProfile: (profile: Omit<GitProfile, 'id'>) => Promise<GitProfile>;
-  findExistingProfile: (name?: string, email?: string) => GitProfile | undefined;
+  addProfile: (profile: Omit<GitProfile, "id">) => Promise<GitProfile>;
+  findExistingProfile: (
+    name?: string,
+    email?: string,
+  ) => GitProfile | undefined;
   updateProfile: (profile: GitProfile) => Promise<void>;
   deleteProfile: (id: string) => Promise<void>;
   switchProfileGlobally: (id: string) => Promise<void>;
@@ -39,7 +42,7 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
   fetchProfiles: async () => {
     set({ loading: true, error: null });
     try {
-      const profiles = await invoke<GitProfile[]>('get_profiles');
+      const profiles = await invoke<GitProfile[]>("get_profiles");
       set({ profiles, loading: false });
     } catch (e: any) {
       set({ error: e.toString(), loading: false });
@@ -49,7 +52,9 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
   addProfile: async (profileDraft) => {
     set({ loading: true, error: null });
     try {
-      const created = await invoke<GitProfile>('add_profile', { profile: { id: '', ...profileDraft } });
+      const created = await invoke<GitProfile>("add_profile", {
+        profile: { id: "", ...profileDraft },
+      });
       await get().fetchProfiles();
       set({ loading: false });
       return created;
@@ -62,9 +67,13 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
   findExistingProfile: (name?: string, email?: string) => {
     const ps = get().profiles;
     if (!name && !email) return undefined;
-    return ps.find(p => {
-      const matchesName = name ? p.name.trim().toLowerCase() === name.trim().toLowerCase() : true;
-      const matchesEmail = email ? p.email.trim().toLowerCase() === email.trim().toLowerCase() : true;
+    return ps.find((p) => {
+      const matchesName = name
+        ? p.name.trim().toLowerCase() === name.trim().toLowerCase()
+        : true;
+      const matchesEmail = email
+        ? p.email.trim().toLowerCase() === email.trim().toLowerCase()
+        : true;
       return matchesName && matchesEmail;
     });
   },
@@ -72,7 +81,7 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
   updateProfile: async (profile) => {
     set({ loading: true, error: null });
     try {
-      await invoke('update_profile', { profile });
+      await invoke("update_profile", { profile });
       await get().fetchProfiles();
     } catch (e: any) {
       set({ error: e.toString(), loading: false });
@@ -82,7 +91,7 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
   deleteProfile: async (id) => {
     set({ loading: true, error: null });
     try {
-      await invoke('delete_profile', { id });
+      await invoke("delete_profile", { id });
       await get().fetchProfiles();
     } catch (e: any) {
       set({ error: e.toString(), loading: false });
@@ -92,19 +101,23 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
   switchProfileGlobally: async (id) => {
     set({ error: null });
     try {
-      await invoke('switch_profile_globally', { id });
+      await invoke("switch_profile_globally", { id });
     } catch (e: any) {
       set({ error: e.toString() });
     }
-  }
+  },
 
-  ,detectIdentities: async (directory?: string) => {
+  detectIdentities: async (directory?: string) => {
     set({ detectLoading: true, detectError: null });
     try {
-      const detected = await invoke<GitProfile[]>('detect_identities', { directory });
+      const detected = await invoke<GitProfile[]>("detect_identities", {
+        directory,
+      });
       set({ detectedProfiles: detected, detectLoading: false });
     } catch (e: any) {
       set({ detectError: e.toString(), detectLoading: false });
+      // rethrow so callers (components) can display toasts or handle actions
+      throw e;
     }
-  }
+  },
 }));
