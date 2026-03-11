@@ -20,7 +20,8 @@ interface ProfileState {
   detectLoading: boolean;
   detectError: string | null;
   fetchProfiles: () => Promise<void>;
-  addProfile: (profile: Omit<GitProfile, 'id'>) => Promise<void>;
+  addProfile: (profile: Omit<GitProfile, 'id'>) => Promise<GitProfile>;
+  findExistingProfile: (name?: string, email?: string) => GitProfile | undefined;
   updateProfile: (profile: GitProfile) => Promise<void>;
   deleteProfile: (id: string) => Promise<void>;
   switchProfileGlobally: (id: string) => Promise<void>;
@@ -48,11 +49,24 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
   addProfile: async (profileDraft) => {
     set({ loading: true, error: null });
     try {
-      await invoke('add_profile', { profile: { id: '', ...profileDraft } });
+      const created = await invoke<GitProfile>('add_profile', { profile: { id: '', ...profileDraft } });
       await get().fetchProfiles();
+      set({ loading: false });
+      return created;
     } catch (e: any) {
       set({ error: e.toString(), loading: false });
+      throw e;
     }
+  },
+
+  findExistingProfile: (name?: string, email?: string) => {
+    const ps = get().profiles;
+    if (!name && !email) return undefined;
+    return ps.find(p => {
+      const matchesName = name ? p.name.trim().toLowerCase() === name.trim().toLowerCase() : true;
+      const matchesEmail = email ? p.email.trim().toLowerCase() === email.trim().toLowerCase() : true;
+      return matchesName && matchesEmail;
+    });
   },
 
   updateProfile: async (profile) => {

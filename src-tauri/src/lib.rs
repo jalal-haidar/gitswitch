@@ -12,6 +12,7 @@ pub fn run() {
             commands::profiles::update_profile,
             commands::profiles::delete_profile,
             commands::profiles::switch_profile_globally,
+            commands::profiles::apply_identity,
             commands::detect::detect_identities,
         ])
         .run(tauri::generate_context!())

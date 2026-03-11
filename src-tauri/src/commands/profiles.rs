@@ -117,6 +117,28 @@ pub fn switch_profile_globally(app: AppHandle, id: String) -> Result<(), String>
     Ok(())
 }
 
+#[tauri::command]
+pub fn apply_identity(_app: AppHandle, name: String, email: String, gpg_key: Option<String>) -> Result<(), String> {
+    // Apply the given identity directly to global git config
+    execute_git_command(vec!["config", "--global", "user.name", &name])?;
+    execute_git_command(vec!["config", "--global", "user.email", &email])?;
+
+    if let Some(ref gpg) = gpg_key {
+        if !gpg.is_empty() {
+            execute_git_command(vec!["config", "--global", "user.signingkey", gpg])?;
+            execute_git_command(vec!["config", "--global", "commit.gpgsign", "true"])?;
+        } else {
+            execute_git_command(vec!["config", "--global", "--unset", "user.signingkey"]).ok();
+            execute_git_command(vec!["config", "--global", "commit.gpgsign", "false"]).ok();
+        }
+    } else {
+        execute_git_command(vec!["config", "--global", "--unset", "user.signingkey"]).ok();
+        execute_git_command(vec!["config", "--global", "commit.gpgsign", "false"]).ok();
+    }
+
+    Ok(())
+}
+
 fn execute_git_command(args: Vec<&str>) -> Result<(), String> {
     let output = Command::new("git")
         .args(&args)

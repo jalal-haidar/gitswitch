@@ -1,20 +1,27 @@
 import React from 'react';
 import { useProfileStore, GitProfile } from '../stores/useProfileStore';
+import { invoke } from '@tauri-apps/api/core';
 
 export const DetectedProfilesList: React.FC = () => {
   const { detectedProfiles, detectLoading, detectError, detectIdentities, addProfile, switchProfileGlobally } = useProfileStore();
 
   const handleImport = async (p: GitProfile) => {
-    await addProfile({ label: p.label || 'Imported', name: p.name, email: p.email, color: p.color || '#6A5ACD', isDefault: false, sshKeyPath: p.sshKeyPath, gpgKeyId: p.gpgKeyId });
+    const existing = useProfileStore.getState().findExistingProfile(p.name, p.email);
+    if (existing) {
+      // already exists - nothing to do
+      return existing;
+    }
+    const created = await addProfile({ label: p.label || 'Imported', name: p.name, email: p.email, color: p.color || '#6A5ACD', isDefault: false, sshKeyPath: p.sshKeyPath, gpgKeyId: p.gpgKeyId });
+    return created;
   };
 
   const handleApply = async (p: GitProfile) => {
-    // Create a temporary profile then apply using switchProfileGlobally by adding then finding id
-    await addProfile({ label: p.label || 'Temp', name: p.name, email: p.email, color: p.color || '#6A5ACD', isDefault: false, sshKeyPath: p.sshKeyPath, gpgKeyId: p.gpgKeyId });
-    // refresh and find the newly added profile id
-    const state = useProfileStore.getState();
-    const matched = state.profiles.find(pr => pr.name === p.name && pr.email === p.email);
-    if (matched) await switchProfileGlobally(matched.id);
+    try {
+      await invoke('apply_identity', { name: p.name, email: p.email, gpg_key: p.gpgKeyId ?? null });
+    } catch (e) {
+      // propagate or set error state — kept minimal for now
+      console.error('apply_identity failed', e);
+    }
   };
 
   return (
