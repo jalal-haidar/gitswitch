@@ -84,7 +84,7 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
     }
   }
 
-  detectIdentities: async (directory?) => {
+  ,detectIdentities: async (directory?: string) => {
     set({ detectLoading: true, detectError: null });
     try {
       const detected = await invoke<GitProfile[]>('detect_identities', { directory });
