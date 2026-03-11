@@ -1,7 +1,8 @@
 import React, { useEffect } from 'react';
-import { Plus, Users } from 'lucide-react';
+import { Plus, Users, RefreshCw } from 'lucide-react';
 import { useProfileStore } from '../stores/useProfileStore';
 import { ProfileCard } from './ProfileCard';
+import DetectedProfilesList from './DetectedProfilesList';
 
 export const Dashboard: React.FC = () => {
   const { profiles, loading, fetchProfiles, addProfile } = useProfileStore();
@@ -30,9 +31,14 @@ export const Dashboard: React.FC = () => {
       <section>
         <div className="section-header">
           <h2>Your Profiles</h2>
-          <button className="btn btn-primary" onClick={handleAddDemo}>
-            <Plus size={18} /> New Profile
-          </button>
+          <div className="section-actions">
+            <button className="btn btn-ghost" onClick={() => useProfileStore.getState().detectIdentities()} title="Detect identities">
+              <RefreshCw size={16} /> Detect
+            </button>
+            <button className="btn btn-primary" onClick={handleAddDemo}>
+              <Plus size={18} /> New Profile
+            </button>
+          </div>
         </div>
 
         {loading ? (
@@ -53,6 +59,10 @@ export const Dashboard: React.FC = () => {
             ))}
           </div>
         )}
+      
+      <section style={{ marginTop: 24 }}>
+        <DetectedProfilesList />
+      </section>
       </section>
     </div>
   );

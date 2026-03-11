@@ -7,7 +7,7 @@ export interface GitProfile {
   name: string;
   email: string;
   color: string;
-  sshCasePath?: string;
+  sshKeyPath?: string;
   gpgKeyId?: string;
   isDefault: boolean;
 }
@@ -16,17 +16,24 @@ interface ProfileState {
   profiles: GitProfile[];
   loading: boolean;
   error: string | null;
+  detectedProfiles: GitProfile[];
+  detectLoading: boolean;
+  detectError: string | null;
   fetchProfiles: () => Promise<void>;
   addProfile: (profile: Omit<GitProfile, 'id'>) => Promise<void>;
   updateProfile: (profile: GitProfile) => Promise<void>;
   deleteProfile: (id: string) => Promise<void>;
   switchProfileGlobally: (id: string) => Promise<void>;
+  detectIdentities: (directory?: string) => Promise<void>;
 }
 
 export const useProfileStore = create<ProfileState>((set, get) => ({
   profiles: [],
   loading: false,
   error: null,
+  detectedProfiles: [],
+  detectLoading: false,
+  detectError: null,
 
   fetchProfiles: async () => {
     set({ loading: true, error: null });
@@ -74,6 +81,16 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
       await invoke('switch_profile_globally', { id });
     } catch (e: any) {
       set({ error: e.toString() });
+    }
+  }
+
+  detectIdentities: async (directory?) => {
+    set({ detectLoading: true, detectError: null });
+    try {
+      const detected = await invoke<GitProfile[]>('detect_identities', { directory });
+      set({ detectedProfiles: detected, detectLoading: false });
+    } catch (e: any) {
+      set({ detectError: e.toString(), detectLoading: false });
     }
   }
 }));
