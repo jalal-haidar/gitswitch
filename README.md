@@ -45,3 +45,15 @@
 - [/] UI Components (Current Focus)
 - [ ] SSH Key Management
 - [ ] System Tray Integration
+
+## 📦 Releases
+
+Binaries and installers for the latest release are available from the GitHub Releases page.
+
+- **Latest release:** v0.1.0
+- Download (Windows EXE): https://github.com/jalal-haidar/gitswitch/releases/download/v0.1.0/gitswitch_0.1.0_x64-setup.exe
+- Download (Windows MSI): https://github.com/jalal-haidar/gitswitch/releases/download/v0.1.0/gitswitch_0.1.0_x64_en-US.msi
+
+You can also visit the releases page to see all published artifacts:
+
+https://github.com/jalal-haidar/gitswitch/releases
