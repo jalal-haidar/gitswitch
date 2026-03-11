@@ -99,5 +99,19 @@ Choose one of the installers from the releases page and follow these steps.
   ```
 
 Notes:
+
 - Installing may require administrator privileges.
 - If installers are unsigned, Windows SmartScreen may warn; signed installers reduce such warnings.
+
+## ❌ Uninstalling GitSwitch (Windows)
+
+Remove GitSwitch using the GUI or silently for automated workflows.
+
+- GUI (recommended): open **Settings → Apps → Apps & features**, find "GitSwitch", and choose **Uninstall**. You can also use Control Panel → Programs and Features.
+- MSI silent uninstall (admin):
+  ```powershell
+  Start-Process msiexec -Wait -ArgumentList '/x','"<path-to>\\gitswitch_0.1.0_x64_en-US.msi"','/qn'
+  ```
+- EXE installer uninstall: run the uninstaller from the Start Menu or the installation directory (for example `C:\Program Files\GitSwitch\uninstall.exe`) if present.
+
+To fully remove user data, delete the application's data directory (check app settings or docs for the exact path). Be careful: this will remove saved profiles and settings.
