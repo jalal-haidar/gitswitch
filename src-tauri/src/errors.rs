@@ -1,7 +1,7 @@
 use serde::Serialize;
 use std::fmt;
 
-#[derive(Serialize)]
+#[derive(Debug, Serialize)]
 pub enum BackendErrorKind {
     GitNotFound,
     PermissionDenied,
@@ -11,7 +11,7 @@ pub enum BackendErrorKind {
     Unknown,
 }
 
-#[derive(Serialize)]
+#[derive(Debug, Serialize)]
 pub struct BackendError {
     pub kind: BackendErrorKind,
     pub message: String,
@@ -72,3 +72,25 @@ impl fmt::Display for BackendError {
 }
 
 impl std::error::Error for BackendError {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn backend_error_git_not_found_serializes() {
+        let e = BackendError::git_not_found();
+        let s = e.to_string();
+        // should include kind and hint
+        assert!(s.contains("GitNotFound") || s.contains("Git executable not found"));
+        assert!(s.contains("git-scm.com") || s.contains("Install Git"));
+    }
+
+    #[test]
+    fn backend_error_permission_has_hint() {
+        let e = BackendError::permission_denied("access denied to file");
+        let s = e.to_string();
+        assert!(s.contains("PermissionDenied") || s.contains("Permission denied"));
+        assert!(s.contains("elevated") || s.contains("permissions"));
+    }
+}

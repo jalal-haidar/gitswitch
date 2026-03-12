@@ -34,7 +34,7 @@ const ToastItem: React.FC<{
       <div className="toast-body">
         {message}
         {actions && actions.length > 0 && (
-          <div style={{ marginTop: 8, display: 'flex', gap: 8 }}>
+          <div style={{ marginTop: 8, display: "flex", gap: 8 }}>
             {actions.map((a, idx) => (
               <button
                 key={idx}
@@ -44,7 +44,7 @@ const ToastItem: React.FC<{
                     a.onClick();
                   } catch (err) {
                     // swallow
-                    console.error('toast action failed', err);
+                    console.error("toast action failed", err);
                   }
                   onClose(id);
                 }}
@@ -63,7 +63,6 @@ const ToastItem: React.FC<{
         <X size={14} />
       </button>
     </div>
-  );
   );
 };
 

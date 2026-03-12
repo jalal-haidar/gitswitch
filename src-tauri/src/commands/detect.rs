@@ -50,7 +50,21 @@ pub fn detect_identities(_app: AppHandle, directory: Option<String>) -> Result<V
             Ok(None) => String::new(),
             Err(e) => return Err(e.to_string()),
         },
-        Err(e) => return Err(e.to_string()),
+        Err(e) => {
+            // If git executable missing or permission issues, abort.
+            match e.kind {
+                crate::errors::BackendErrorKind::GitNotFound
+                | crate::errors::BackendErrorKind::PermissionDenied => return Err(e.to_string()),
+                _ => {
+                    // Non-fatal git failure (e.g., not a git repository) — try global
+                    match run_git(&["config", "--global", "--get", "user.name"]) {
+                        Ok(Some(v)) => v,
+                        Ok(None) => String::new(),
+                        Err(e2) => return Err(e2.to_string()),
+                    }
+                }
+            }
+        }
     };
 
     let email = match run_git(&["config", "user.email"]) {
@@ -60,7 +74,17 @@ pub fn detect_identities(_app: AppHandle, directory: Option<String>) -> Result<V
             Ok(None) => String::new(),
             Err(e) => return Err(e.to_string()),
         },
-        Err(e) => return Err(e.to_string()),
+        Err(e) => {
+            match e.kind {
+                crate::errors::BackendErrorKind::GitNotFound
+                | crate::errors::BackendErrorKind::PermissionDenied => return Err(e.to_string()),
+                _ => match run_git(&["config", "--global", "--get", "user.email"]) {
+                    Ok(Some(v)) => v,
+                    Ok(None) => String::new(),
+                    Err(e2) => return Err(e2.to_string()),
+                },
+            }
+        }
     };
 
     let signingkey = match run_git(&["config", "user.signingkey"]) {
@@ -70,7 +94,17 @@ pub fn detect_identities(_app: AppHandle, directory: Option<String>) -> Result<V
             Ok(None) => String::new(),
             Err(e) => return Err(e.to_string()),
         },
-        Err(e) => return Err(e.to_string()),
+        Err(e) => {
+            match e.kind {
+                crate::errors::BackendErrorKind::GitNotFound
+                | crate::errors::BackendErrorKind::PermissionDenied => return Err(e.to_string()),
+                _ => match run_git(&["config", "--global", "--get", "user.signingkey"]) {
+                    Ok(Some(v)) => v,
+                    Ok(None) => String::new(),
+                    Err(e2) => return Err(e2.to_string()),
+                },
+            }
+        }
     };
 
     // Detect simple SSH key presence in ~/.ssh (look for common private key names)

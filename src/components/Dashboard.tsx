@@ -37,7 +37,11 @@ export const Dashboard: React.FC = () => {
       await detectIdentities();
     } catch (e: any) {
       const info = normalizeBackendError(e?.toString?.() ?? e);
-      toast.show({ message: info.message, kind: 'error', duration: info.hint ? 8000 : 6000 });
+      toast.show({
+        message: info.message,
+        kind: "error",
+        duration: info.hint ? 8000 : 6000,
+      });
     }
   };
 
@@ -54,19 +58,19 @@ export const Dashboard: React.FC = () => {
           <div className="section-actions">
             <button
               className="btn btn-ghost"
-              onClick={() => detectIdentities()}
-              title="Detect identities"
-              disabled={detectLoading}
-            >
-              <RefreshCw size={16} /> {detectLoading ? "Scanning…" : "Detect"}
-            <button
-              className="btn btn-ghost"
               onClick={handleDetectClick}
               title="Detect identities"
               disabled={detectLoading}
             >
-              <RefreshCw size={16} /> {detectLoading ? 'Scanning…' : 'Detect'}
+              <RefreshCw size={16} /> {detectLoading ? "Scanning…" : "Detect"}
             </button>
+            <button className="btn btn-primary" onClick={handleAddDemo}>
+              <Plus size={18} /> New Profile
+            </button>
+          </div>
+        </div>
+
+        {loading ? (
           <div className="empty-state">Loading your profiles...</div>
         ) : profiles.length === 0 ? (
           <div className="glass-panel empty-state">

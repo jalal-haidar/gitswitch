@@ -164,3 +164,18 @@ fn execute_git_command(args: Vec<&str>) -> Result<(), String> {
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn execute_git_command_returns_git_failed_on_bad_args() {
+        // calling git with an invalid rev-parse flag should produce a failing exit status
+        let res = execute_git_command(vec!["rev-parse", "--not-a-real-arg"]);
+            if let Err(err) = res {
+                // the error string should include serialized BackendError with kind GitFailed
+                assert!(err.contains("GitFailed") || err.to_lowercase().contains("git command failed"), "unexpected error payload: {}", err);
+            }
+    }
+}

@@ -19,9 +19,14 @@ export function normalizeBackendError(e: unknown) {
     if (typeof e === "string") {
       // backend often returns serialized JSON string for structured errors
       try {
+        // Try direct parse first
         const parsed = JSON.parse(e) as BackendError;
         const title = parsed.kind || "Error";
-        const message = parsed.message || parsed.details || "An error occurred";
+        // If backend returned a generic message like "Git command failed", prefer details when available
+        const message =
+          parsed.message && parsed.message !== "Git command failed"
+            ? parsed.message
+            : parsed.details || "An error occurred";
         return {
           title,
           message,
@@ -30,7 +35,27 @@ export function normalizeBackendError(e: unknown) {
           kind: parsed.kind,
         };
       } catch (_) {
-        // not JSON — fallthrough
+        // Try to extract JSON substring from strings like "Error: {...}" or wrapped values
+        const jsonMatch = e.match(/(\{[\s\S]*\})/);
+        if (jsonMatch) {
+          try {
+            const parsed = JSON.parse(jsonMatch[1]) as BackendError;
+            const title = parsed.kind || "Error";
+            const message =
+              parsed.message && parsed.message !== "Git command failed"
+                ? parsed.message
+                : parsed.details || "An error occurred";
+            return {
+              title,
+              message,
+              hint: parsed.hint,
+              details: parsed.details,
+              kind: parsed.kind,
+            };
+          } catch {
+            // fallthrough to plain string
+          }
+        }
         return { title: "Error", message: e };
       }
     }
