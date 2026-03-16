@@ -1,6 +1,6 @@
 [package]
 name = "gitswitch"
-version = "0.1.0"
+version = "0.1.1"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
@@ -25,4 +25,5 @@ serde_json = "1"
 uuid = { version = "1.22.0", features = ["v4", "serde"] }
 anyhow = "1.0.102"
 log = "0.4.29"
+notify = "6.1.1"
 
