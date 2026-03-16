@@ -16,6 +16,8 @@ pub struct GitProfile {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DirectoryRule {
+    #[serde(default)]
+    pub id: String,
     pub path: String,
     pub profile_id: String,
 }
@@ -43,7 +45,12 @@ impl Default for AppSettings {
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct AppConfig {
+    #[serde(default)]
     pub profiles: Vec<GitProfile>,
+    #[serde(default)]
+    pub active_profile_id: Option<String>,
+    #[serde(default)]
     pub directory_rules: Vec<DirectoryRule>,
+    #[serde(default)]
     pub settings: AppSettings,
 }

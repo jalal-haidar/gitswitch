@@ -1,15 +1,22 @@
+use std::path::Path;
 use std::process::Command;
 use tauri::AppHandle;
 use uuid::Uuid;
 
 use crate::config::store;
-use crate::models::{AppConfig, GitProfile};
+use crate::models::GitProfile;
 use crate::errors::BackendError;
 
 #[tauri::command]
 pub fn get_profiles(app: AppHandle) -> Result<Vec<GitProfile>, String> {
     let config = store::load_config(&app).map_err(|e| e.to_string())?;
     Ok(config.profiles)
+}
+
+#[tauri::command]
+pub fn get_active_profile_id(app: AppHandle) -> Result<Option<String>, String> {
+    let config = store::load_config(&app).map_err(|e| e.to_string())?;
+    Ok(config.active_profile_id)
 }
 
 #[tauri::command]
@@ -27,6 +34,10 @@ pub fn add_profile(app: AppHandle, mut profile: GitProfile) -> Result<GitProfile
         for existing_profile in &mut config.profiles {
             existing_profile.is_default = false;
         }
+    }
+
+    if config.active_profile_id.is_none() {
+        config.active_profile_id = Some(profile.id.clone());
     }
     
     config.profiles.push(profile.clone());
@@ -74,6 +85,10 @@ pub fn update_profile(app: AppHandle, profile: GitProfile) -> Result<GitProfile,
 #[tauri::command]
 pub fn delete_profile(app: AppHandle, id: String) -> Result<(), String> {
     let mut config = store::load_config(&app).map_err(|e| e.to_string())?;
+
+    if config.directory_rules.iter().any(|rule| rule.profile_id == id) {
+        return Err("Cannot delete profile while it is referenced by directory rules".to_string());
+    }
     
     let initial_len = config.profiles.len();
     config.profiles.retain(|p| p.id != id);
@@ -86,6 +101,10 @@ pub fn delete_profile(app: AppHandle, id: String) -> Result<(), String> {
     if config.profiles.iter().all(|p| !p.is_default) && !config.profiles.is_empty() {
         config.profiles[0].is_default = true;
     }
+
+    if config.active_profile_id.as_deref() == Some(id.as_str()) {
+        config.active_profile_id = config.profiles.first().map(|p| p.id.clone());
+    }
     
     store::save_config(&app, &config).map_err(|e| e.to_string())?;
     
@@ -94,7 +113,7 @@ pub fn delete_profile(app: AppHandle, id: String) -> Result<(), String> {
 
 #[tauri::command]
 pub fn switch_profile_globally(app: AppHandle, id: String) -> Result<(), String> {
-    let config = store::load_config(&app).map_err(|e| e.to_string())?;
+    let mut config = store::load_config(&app).map_err(|e| e.to_string())?;
     let profile = config.profiles.iter().find(|p| p.id == id)
         .ok_or_else(|| "Profile not found".to_string())?;
         
@@ -114,7 +133,40 @@ pub fn switch_profile_globally(app: AppHandle, id: String) -> Result<(), String>
         execute_git_command(vec!["config", "--global", "--unset", "user.signingkey"]).ok();
         execute_git_command(vec!["config", "--global", "commit.gpgsign", "false"]).ok();
     }
+
+    config.active_profile_id = Some(id);
+    store::save_config(&app, &config).map_err(|e| e.to_string())?;
     
+    Ok(())
+}
+
+pub fn switch_profile_for_repo(app: AppHandle, id: String, repo_path: &Path) -> Result<(), String> {
+    let mut config = store::load_config(&app).map_err(|e| e.to_string())?;
+    let profile = config
+        .profiles
+        .iter()
+        .find(|p| p.id == id)
+        .ok_or_else(|| "Profile not found".to_string())?;
+
+    execute_git_command_in_dir(vec!["config", "--local", "user.name", &profile.name], Some(repo_path))?;
+    execute_git_command_in_dir(vec!["config", "--local", "user.email", &profile.email], Some(repo_path))?;
+
+    if let Some(ref gpg_key) = profile.gpg_key_id {
+        if !gpg_key.is_empty() {
+            execute_git_command_in_dir(vec!["config", "--local", "user.signingkey", gpg_key], Some(repo_path))?;
+            execute_git_command_in_dir(vec!["config", "--local", "commit.gpgsign", "true"], Some(repo_path))?;
+        } else {
+            execute_git_command_in_dir(vec!["config", "--local", "--unset", "user.signingkey"], Some(repo_path)).ok();
+            execute_git_command_in_dir(vec!["config", "--local", "commit.gpgsign", "false"], Some(repo_path)).ok();
+        }
+    } else {
+        execute_git_command_in_dir(vec!["config", "--local", "--unset", "user.signingkey"], Some(repo_path)).ok();
+        execute_git_command_in_dir(vec!["config", "--local", "commit.gpgsign", "false"], Some(repo_path)).ok();
+    }
+
+    config.active_profile_id = Some(id);
+    store::save_config(&app, &config).map_err(|e| e.to_string())?;
+
     Ok(())
 }
 
@@ -141,8 +193,18 @@ pub fn apply_identity(_app: AppHandle, name: String, email: String, gpg_key: Opt
 }
 
 fn execute_git_command(args: Vec<&str>) -> Result<(), String> {
+    execute_git_command_in_dir(args, None)
+}
+
+fn execute_git_command_in_dir(args: Vec<&str>, cwd: Option<&Path>) -> Result<(), String> {
     // Try to spawn `git` and handle common errors with structured hints
-    let output = Command::new("git").args(&args).output().map_err(|e| {
+    let mut command = Command::new("git");
+    command.args(&args);
+    if let Some(path) = cwd {
+        command.current_dir(path);
+    }
+
+    let output = command.output().map_err(|e| {
         // If git isn't found on PATH, return a helpful BackendError serialized to string
         if e.kind() == std::io::ErrorKind::NotFound {
             BackendError::git_not_found().to_string()

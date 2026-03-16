@@ -22,17 +22,18 @@ Any developer who uses **2+ Git identities** on the same machine (e.g., personal
 
 ## 2. Competitive Landscape
 
-| Tool | Type | Strengths | Gaps |
-|------|------|-----------|------|
-| **GitKraken** | Desktop Git Client | Profiles, SSH key gen | Heavy, paid for enterprise, it's a full Git client — not a focused identity manager |
-| **GitHub Desktop** | Desktop Git Client | Multi-account since 2023 | GitHub-only, no SSH/GPG key management, no directory rules |
-| **GitShift** | VS Code Extension | Workspace name/email switching | VS Code only, no SSH keys, no system tray, limited automation |
-| **Git Account Switcher** | macOS App | Keychain integration, AES encryption | macOS only, no cross-platform |
-| **Manual SSH Config** | Config files | Full control | Error-prone, no UI, steep learning curve |
+| Tool                     | Type               | Strengths                            | Gaps                                                                                |
+| ------------------------ | ------------------ | ------------------------------------ | ----------------------------------------------------------------------------------- |
+| **GitKraken**            | Desktop Git Client | Profiles, SSH key gen                | Heavy, paid for enterprise, it's a full Git client — not a focused identity manager |
+| **GitHub Desktop**       | Desktop Git Client | Multi-account since 2023             | GitHub-only, no SSH/GPG key management, no directory rules                          |
+| **GitShift**             | VS Code Extension  | Workspace name/email switching       | VS Code only, no SSH keys, no system tray, limited automation                       |
+| **Git Account Switcher** | macOS App          | Keychain integration, AES encryption | macOS only, no cross-platform                                                       |
+| **Manual SSH Config**    | Config files       | Full control                         | Error-prone, no UI, steep learning curve                                            |
 
 ### Our Differentiator
 
 **GitSwitch** is a **dedicated, cross-platform, lightweight** identity management tool — not a full Git client. It focuses exclusively on making multi-account Git setups painless with:
+
 - Visual profile management (name, email, SSH keys, GPG keys, signing preferences)
 - Automatic profile switching based on directory rules
 - System tray for instant switching
@@ -44,15 +45,15 @@ Any developer who uses **2+ Git identities** on the same machine (e.g., personal
 
 ### Desktop App: **Tauri 2.0 + React + TypeScript**
 
-| Aspect | Choice | Rationale |
-|--------|--------|-----------|
-| **Framework** | **Tauri 2.0** | ~5MB binary (vs 100MB+ Electron), ~30MB RAM, sub-second startup. Uses OS native webview + Rust backend. Security-by-design. |
-| **Frontend** | **React 19 + TypeScript** | Most popular UI library, strong ecosystem, excellent typing. Familiar to target audience (developers). |
-| **Styling** | **CSS Modules + CSS Variables** | Lightweight, no build dependency. Clean theming with CSS custom properties for dark/light modes. |
-| **State Management** | **Zustand** | Minimal, fast, TypeScript-first. Perfect for a focused app. |
-| **Build Tool** | **Vite** | Bundled with Tauri's React template. Instant HMR. |
-| **Icons** | **Lucide React** | Clean, consistent icon set. MIT licensed. |
-| **Notifications** | **Tauri Notification Plugin** | Native OS notifications for profile switch confirmations. |
+| Aspect               | Choice                          | Rationale                                                                                                                   |
+| -------------------- | ------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| **Framework**        | **Tauri 2.0**                   | ~5MB binary (vs 100MB+ Electron), ~30MB RAM, sub-second startup. Uses OS native webview + Rust backend. Security-by-design. |
+| **Frontend**         | **React 19 + TypeScript**       | Most popular UI library, strong ecosystem, excellent typing. Familiar to target audience (developers).                      |
+| **Styling**          | **CSS Modules + CSS Variables** | Lightweight, no build dependency. Clean theming with CSS custom properties for dark/light modes.                            |
+| **State Management** | **Zustand**                     | Minimal, fast, TypeScript-first. Perfect for a focused app.                                                                 |
+| **Build Tool**       | **Vite**                        | Bundled with Tauri's React template. Instant HMR.                                                                           |
+| **Icons**            | **Lucide React**                | Clean, consistent icon set. MIT licensed.                                                                                   |
+| **Notifications**    | **Tauri Notification Plugin**   | Native OS notifications for profile switch confirmations.                                                                   |
 
 ### Why Tauri over Electron?
 
@@ -67,24 +68,28 @@ Any developer who uses **2+ Git identities** on the same machine (e.g., personal
 
 ### VS Code Extension (Future Phase)
 
-| Aspect | Choice |
-|--------|--------|
-| **Language** | TypeScript |
-| **Framework** | VS Code Extension API |
-| **UI** | VS Code Webview API (React) |
+| Aspect        | Choice                      |
+| ------------- | --------------------------- |
+| **Language**  | TypeScript                  |
+| **Framework** | VS Code Extension API       |
+| **UI**        | VS Code Webview API (React) |
 
 ---
 
 ## 4. Feature Roadmap
 
 ### Phase 1: Core Identity Manager (MVP)
-- **Profile CRUD** — Create, read, update, delete Git profiles (name, email, avatar/color)  
+
+- **Profile CRUD** — Create, read, update, delete Git profiles (name, email, avatar/color)
 - **Active Profile Display** — Show which identity is currently active globally
 - **One-Click Switch** — Switch `user.name` and `user.email` globally with a single click
 - **Profile Validation** — Verify email format, warn on duplicates
 - **Settings Persistence** — Store profiles in a local JSON/TOML config file
 
+**Status (Mar 16, 2026):** Phase 1 core scope has been implemented for the first slice. Completed items include profile CRUD, active-profile persistence/sync, one-click global switch wiring, inline profile editor, and robust error normalization. Additionally, directory rules CRUD (create/read/update/delete) is implemented end-to-end (backend commands, config persistence, frontend store and UI). Advanced automation (directory watcher, conditional include generation) remains in the roadmap for Phase 3.
+
 ### Phase 2: SSH & Credential Management
+
 - **SSH Key Association** — Link SSH keys to specific profiles
 - **SSH Config Auto-Generation** — Automatically manage `~/.ssh/config` Host entries
 - **SSH Key Generation** — Generate new SSH key pairs from within the app
@@ -92,6 +97,7 @@ Any developer who uses **2+ Git identities** on the same machine (e.g., personal
 - **GPG Key Association** — Link GPG signing keys to profiles
 
 ### Phase 3: Automation & System Integration
+
 - **Directory Rules** — Define rules like "all repos under `~/work/` use Work profile"
 - **Git Conditional Includes** — Auto-generate `[includeIf]` blocks in `.gitconfig`
 - **System Tray** — Quick-switch profiles from the system tray icon
@@ -99,6 +105,7 @@ Any developer who uses **2+ Git identities** on the same machine (e.g., personal
 - **Native Notifications** — Notify when profile auto-switches based on directory rules
 
 ### Phase 4: VS Code Extension
+
 - **Workspace Profile Picker** — Status bar item showing active Git identity
 - **Per-Workspace Override** — Set a specific profile for the open workspace
 - **Profile Sync** — Read profiles from the desktop app's config (shared config file)
@@ -158,6 +165,7 @@ Any developer who uses **2+ Git identities** on the same machine (e.g., personal
 ```
 
 **profiles.json** (example):
+
 ```json
 {
   "profiles": [
@@ -255,6 +263,7 @@ gitswitch/
 ## 7. UI/UX Design Direction
 
 ### Design Principles
+
 - **Developer-first** — Dark mode default, keyboard shortcuts, minimal clicks
 - **Glanceable** — Active profile always visible, color-coded profiles
 - **Non-intrusive** — Lives in system tray, pops up only when needed
@@ -269,6 +278,7 @@ gitswitch/
 5. **Settings** — Theme, startup behavior, notification preferences
 
 ### Color Palette (Dark Mode Default)
+
 - Background: `#0F1117` (deep dark)
 - Surface: `#1A1D27` (card backgrounds)
 - Border: `#2A2D37` (subtle borders)
@@ -280,33 +290,34 @@ gitswitch/
 
 ## 8. Documentation Plan
 
-| Document | Purpose | When |
-|----------|---------|------|
-| **README.md** | Project overview, install, quick start | Phase 1 |
-| **USER_GUIDE.md** | Full feature walkthrough with screenshots | After Phase 2 |
-| **CONTRIBUTING.md** | How to contribute, code style, PR process | Phase 1 |
-| **ARCHITECTURE.md** | Technical deep-dive, data flow, config format | Phase 1 |
-| **CHANGELOG.md** | Version history | Ongoing |
-| **LICENSE** | MIT License | Phase 1 |
+| Document            | Purpose                                       | When          |
+| ------------------- | --------------------------------------------- | ------------- |
+| **README.md**       | Project overview, install, quick start        | Phase 1       |
+| **USER_GUIDE.md**   | Full feature walkthrough with screenshots     | After Phase 2 |
+| **CONTRIBUTING.md** | How to contribute, code style, PR process     | Phase 1       |
+| **ARCHITECTURE.md** | Technical deep-dive, data flow, config format | Phase 1       |
+| **CHANGELOG.md**    | Version history                               | Ongoing       |
+| **LICENSE**         | MIT License                                   | Phase 1       |
 
 ---
 
 ## 9. Development Milestones
 
-| Milestone | Deliverable | Estimated Effort |
-|-----------|-------------|-----------------|
-| **M1** | Project setup, profile CRUD, global switch | 2-3 days |
-| **M2** | SSH key management, credential helpers | 2-3 days |
-| **M3** | Directory rules, conditional includes, system tray | 3-4 days |
-| **M4** | Polish: themes, animations, notifications | 1-2 days |
-| **M5** | Documentation + CI/CD | 1-2 days |
-| **M6** | VS Code extension (future) | 3-5 days |
+| Milestone | Deliverable                                        | Estimated Effort |
+| --------- | -------------------------------------------------- | ---------------- |
+| **M1**    | Project setup, profile CRUD, global switch         | 2-3 days         |
+| **M2**    | SSH key management, credential helpers             | 2-3 days         |
+| **M3**    | Directory rules, conditional includes, system tray | 3-4 days         |
+| **M4**    | Polish: themes, animations, notifications          | 1-2 days         |
+| **M5**    | Documentation + CI/CD                              | 1-2 days         |
+| **M6**    | VS Code extension (future)                         | 3-5 days         |
 
 ---
 
 ## 10. Verification Plan
 
 ### Automated Testing
+
 ```bash
 # Rust backend unit tests
 cd src-tauri && cargo test
@@ -316,6 +327,7 @@ npm run test
 ```
 
 ### Manual Verification (Phase 1 MVP)
+
 1. **Create a profile** → Verify data appears in `profiles.json`
 2. **Switch profiles** → Run `git config --global user.name` and `git config --global user.email` to confirm values changed
 3. **Edit a profile** → Verify changes persist after app restart
@@ -323,6 +335,7 @@ npm run test
 5. **App launch** → Verify correct active profile is displayed on startup
 
 ### Browser-Based UI Testing
+
 - Launch the Tauri dev server (`npm run tauri dev`)
 - Visually inspect all screens for correct styling, responsiveness, and interactions
 - Test dark/light theme switching

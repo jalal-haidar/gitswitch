@@ -11,6 +11,13 @@
 - **Tauri-Powered:** Lightweight, fast, and secure desktop experience.
 - **Directory Rules (WIP):** Automatically switch profiles based on the directory you are working in.
 
+## Recent updates (Mar 16, 2026)
+
+- **Error normalization & UX fixes:** Backend errors are now parsed and normalized so the UI shows friendly messages (no raw JSON blobs).
+- **Active profile persisted:** The app now stores and exposes an `active_profile_id` so the UI accurately reflects the globally active Git identity.
+- **Inline profile editor:** Profiles can be created and edited inline via the new `ProfileEditor` component.
+- **Directory rules CRUD implemented:** Full create/read/update/delete support for directory rules is available (backend commands + frontend UI). Advanced automation (auto-switch watcher, glob generation) is intentionally deferred to a follow-up phase.
+
 ## 🛠️ Tech Stack
 
 - **Backend:** Rust + Tauri 2.0

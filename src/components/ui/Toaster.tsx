@@ -17,11 +17,7 @@ const ToastItem: React.FC<{
     return () => clearTimeout(t);
   }, [id, duration, onClose]);
   return (
-    <div
-      className={`toast ${kind} show`}
-      role={kind === "error" ? "alert" : "status"}
-      aria-live={kind === "error" ? "assertive" : "polite"}
-    >
+    <div className={`toast ${kind} show`} role="status" aria-live="polite">
       <div className="toast-icon">
         {kind === "success" ? (
           <CheckCircle size={18} />
@@ -34,7 +30,7 @@ const ToastItem: React.FC<{
       <div className="toast-body">
         {message}
         {actions && actions.length > 0 && (
-          <div style={{ marginTop: 8, display: "flex", gap: 8 }}>
+          <div className="toast-actions">
             {actions.map((a, idx) => (
               <button
                 key={idx}

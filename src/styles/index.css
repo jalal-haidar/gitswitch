@@ -74,8 +74,8 @@ body {
 /* Utility Classes */
 .glass-panel {
   background: var(--surface-color);
-  backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-lg);
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
@@ -128,6 +128,16 @@ body {
 .btn-secondary:hover {
   background: rgba(255, 255, 255, 0.1);
   border-color: rgba(255, 255, 255, 0.1);
+}
+
+.btn-ghost {
+  background: rgba(255, 255, 255, 0.92);
+  color: #111827;
+  border: 1px solid rgba(255, 255, 255, 0.9);
+}
+
+.btn-ghost:hover {
+  background: #ffffff;
 }
 
 .btn-icon {
@@ -220,6 +230,7 @@ h4 {
   align-items: center;
   justify-content: center;
   color: white;
+  background: linear-gradient(135deg, var(--accent-color), #8b5cf6);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
 }
 
@@ -264,6 +275,98 @@ h4 {
   align-items: center;
   justify-content: flex-end;
   gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.profile-editor {
+  padding: 1rem;
+  margin-bottom: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.profile-editor-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+}
+
+.field-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+}
+
+.field-group span {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.field-group input {
+  width: 100%;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-color);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-primary);
+  box-shadow: none;
+}
+
+.field-group input:focus-visible,
+.field-group select:focus-visible,
+.btn:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 3px rgba(124, 58, 237, 0.18),
+    0 0 0 6px rgba(15, 17, 23, 0.6);
+}
+
+.field-group select {
+  width: 100%;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-color);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-primary);
+  box-shadow: none;
+  padding: 0.6em 0.75em;
+}
+
+.color-field-row {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.color-input {
+  width: 56px !important;
+  min-width: 56px;
+  padding: 0.25rem;
+  height: 42px;
+}
+
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.checkbox-row input {
+  width: auto;
+  box-shadow: none;
+}
+
+.form-error {
+  color: #fda4af;
+  font-size: 0.875rem;
+}
+
+.profile-editor-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
 }
 
 .delete-btn:hover {
@@ -292,6 +395,111 @@ h4 {
   align-items: center;
   justify-content: space-between;
   margin-bottom: 1.5rem;
+}
+
+.detected-section {
+  margin-top: 24px;
+}
+
+.detected-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.rules-section {
+  margin-top: 24px;
+}
+
+.rules-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.toggle-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+}
+
+.toggle-row input {
+  width: 16px;
+  height: 16px;
+}
+
+.rules-status {
+  margin-bottom: 0.75rem;
+}
+
+.rules-status-note {
+  margin-bottom: 0.75rem;
+}
+
+.rules-last-event {
+  margin-bottom: 0.75rem;
+}
+
+.rule-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.rule-row {
+  padding: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.rule-row:focus {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.14);
+  border-color: rgba(124, 58, 237, 0.18);
+}
+
+.rule-main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.rule-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.rule-editor {
+  margin-bottom: 0.75rem;
+  padding: 1rem;
+}
+
+.rule-editor-grid {
+  display: grid;
+  grid-template-columns: 1fr 260px;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.muted {
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+}
+
+@media (max-width: 768px) {
+  .rule-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .rule-editor-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .empty-state {
@@ -359,6 +567,12 @@ h4 {
 .toast .toast-body {
   flex: 1 1 auto;
   font-size: 0.95rem;
+}
+
+.toast-actions {
+  margin-top: 8px;
+  display: flex;
+  gap: 8px;
 }
 
 .toast.info .toast-icon {

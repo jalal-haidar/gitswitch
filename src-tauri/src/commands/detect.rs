@@ -25,6 +25,14 @@ pub fn detect_identities(_app: AppHandle, directory: Option<String>) -> Result<V
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+
+            // `git config --get ...` exits non-zero when value is unset.
+            // Treat this as "no value" instead of a hard error.
+            let is_get_lookup = args.iter().any(|arg| *arg == "--get");
+            if is_get_lookup && stderr.is_empty() {
+                return Ok(None);
+            }
+
             // Map permission-related errors
             let stderr_l = stderr.to_lowercase();
             if stderr_l.contains("permission denied") || stderr_l.contains("cannot open") {

@@ -88,13 +88,7 @@ export const DetectedProfilesList: React.FC = () => {
 
   return (
     <div className="detected-list">
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-        }}
-      >
+      <div className="detected-header">
         <h3>Detected Identities</h3>
         {/* Toaster renders portal-mounted toasts globally */}
       </div>

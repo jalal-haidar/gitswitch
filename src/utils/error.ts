@@ -5,9 +5,17 @@ export type BackendError = {
   details?: string;
 };
 
-export function normalizeBackendError(e: unknown) {
+export interface NormalizedBackendError {
+  title: string;
+  message: string;
+  hint?: string;
+  details?: string;
+  kind?: string;
+}
+
+export function normalizeBackendError(e: unknown): NormalizedBackendError {
   // Try parse JSON structured error sent from backend
-  const fallback = {
+  const fallback: NormalizedBackendError = {
     title: "Error",
     message:
       e && typeof e === "object" && "toString" in e
@@ -19,14 +27,15 @@ export function normalizeBackendError(e: unknown) {
     if (typeof e === "string") {
       // backend often returns serialized JSON string for structured errors
       try {
-        // Try direct parse first
         const parsed = JSON.parse(e) as BackendError;
         const title = parsed.kind || "Error";
-        // If backend returned a generic message like "Git command failed", prefer details when available
-        const message =
-          parsed.message && parsed.message !== "Git command failed"
-            ? parsed.message
-            : parsed.details || "An error occurred";
+        const message = (() => {
+          const pm = parsed.message || "";
+          const pd = parsed.details || "";
+          if (pm && pm !== "Git command failed") return pm;
+          if (pd && pd.trim() !== "") return pd;
+          return pm || "An error occurred";
+        })();
         return {
           title,
           message,
@@ -41,10 +50,13 @@ export function normalizeBackendError(e: unknown) {
           try {
             const parsed = JSON.parse(jsonMatch[1]) as BackendError;
             const title = parsed.kind || "Error";
-            const message =
-              parsed.message && parsed.message !== "Git command failed"
-                ? parsed.message
-                : parsed.details || "An error occurred";
+            const message = (() => {
+              const pm = parsed.message || "";
+              const pd = parsed.details || "";
+              if (pm && pm !== "Git command failed") return pm;
+              if (pd && pd.trim() !== "") return pd;
+              return pm || "An error occurred";
+            })();
             return {
               title,
               message,
