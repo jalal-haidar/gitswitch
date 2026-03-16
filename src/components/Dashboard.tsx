@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
-import { Plus, Users, RefreshCw } from "lucide-react";
+import { Plus, Users, RefreshCw, Settings as SettingsIcon } from "lucide-react";
+
 import { GitProfile, useProfileStore } from "../stores/useProfileStore";
 import { useToast } from "./ui/useToast";
 import { normalizeBackendError } from "../utils/error";
@@ -25,6 +26,7 @@ export const Dashboard: React.FC = () => {
   } = useProfileStore();
   const [showCreate, setShowCreate] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [showSettings, setShowSettings] = useState(false);
 
   useEffect(() => {
     fetchProfiles();
@@ -110,6 +112,13 @@ export const Dashboard: React.FC = () => {
           <div className="section-actions">
             <button
               className="btn btn-ghost"
+              title="Settings"
+              onClick={() => setShowSettings(true)}
+            >
+              <SettingsIcon size={16} />
+            </button>
+            <button
+              className="btn btn-ghost"
               onClick={handleDetectClick}
               title="Detect identities"
               disabled={detectLoading}
@@ -178,6 +187,9 @@ export const Dashboard: React.FC = () => {
 
         <DirectoryRulesSection />
       </section>
+      {showSettings && <Settings onClose={() => setShowSettings(false)} />}
     </div>
   );
 };
+
+import Settings from "./Settings";

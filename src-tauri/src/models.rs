@@ -24,11 +24,13 @@ pub struct DirectoryRule {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[serde(default)]
 pub struct AppSettings {
     pub auto_switch: bool,
     pub show_notifications: bool,
     pub start_with_system: bool,
     pub theme: String,
+    pub store_sensitive_in_keyring: bool,
 }
 
 impl Default for AppSettings {
@@ -38,6 +40,7 @@ impl Default for AppSettings {
             show_notifications: true,
             start_with_system: false,
             theme: "system".to_string(),
+            store_sensitive_in_keyring: false,
         }
     }
 }

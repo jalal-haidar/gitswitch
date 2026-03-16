@@ -19,6 +19,11 @@
 
   --transition-fast: 0.15s ease;
   --transition-normal: 0.3s ease;
+  --card-padding: 1.25rem;
+  --card-gap: 1rem;
+  --list-gap: 0.75rem;
+  --detected-item-padding: 0.75rem;
+  --action-gap: 0.75rem;
 }
 
 * {
@@ -198,11 +203,11 @@ h4 {
 
 /* Profile Card Styles */
 .profile-card {
-  padding: 1.5rem;
+  padding: var(--card-padding);
   margin-bottom: 1rem;
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
+  gap: var(--card-gap);
   transition: all var(--transition-normal);
   border-left: 4px solid transparent;
 }
@@ -219,12 +224,12 @@ h4 {
 .profile-header {
   display: flex;
   align-items: center;
-  gap: 1rem;
+  gap: 0.75rem;
 }
 
 .profile-avatar {
-  width: 48px;
-  height: 48px;
+  width: 44px;
+  height: 44px;
   border-radius: var(--radius-md);
   display: flex;
   align-items: center;
@@ -274,22 +279,22 @@ h4 {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 1rem;
+  gap: var(--action-gap);
   flex-wrap: wrap;
 }
 
 .profile-editor {
-  padding: 1rem;
+  padding: calc(var(--card-padding) - 0.1rem);
   margin-bottom: 1rem;
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: var(--card-gap);
 }
 
 .profile-editor-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--card-gap);
 }
 
 .field-group {
@@ -307,11 +312,13 @@ h4 {
 
 .field-group input {
   width: 100%;
-  border-radius: var(--radius-md);
-  border: 1px solid var(--border-color);
-  background: rgba(255, 255, 255, 0.04);
+  border-radius: calc(var(--radius-md) - 2px);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  background: rgba(255, 255, 255, 0.03);
   color: var(--text-primary);
   box-shadow: none;
+  padding: 10px 12px;
+  height: 44px;
 }
 
 .field-group input:focus-visible,
@@ -340,10 +347,10 @@ h4 {
 }
 
 .color-input {
-  width: 56px !important;
-  min-width: 56px;
-  padding: 0.25rem;
-  height: 42px;
+  width: 48px !important;
+  min-width: 48px;
+  padding: 0.15rem;
+  height: 40px;
 }
 
 .checkbox-row {
@@ -367,6 +374,25 @@ h4 {
   display: flex;
   justify-content: flex-end;
   gap: 0.75rem;
+  margin-top: 0.25rem;
+}
+
+.profile-editor .btn {
+  min-width: 120px;
+}
+
+.profile-editor .btn.btn-primary {
+  min-width: 150px;
+}
+
+/* section header action buttons (top-right) */
+.section-header .btn {
+  padding: 10px 14px;
+}
+
+/* input placeholder subtle color */
+input::placeholder {
+  color: rgba(255, 255, 255, 0.35);
 }
 
 .delete-btn:hover {
@@ -399,6 +425,61 @@ h4 {
 
 .detected-section {
   margin-top: 24px;
+}
+
+/* Detected identities list and items spacing */
+.detected-list {
+  margin-top: 0.75rem;
+}
+
+.profile-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--list-gap);
+}
+
+.detected-item {
+  padding: var(--detected-item-padding);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  border-radius: var(--radius-md);
+  transition:
+    background var(--transition-fast),
+    border-color var(--transition-fast);
+  border: 1px solid transparent;
+}
+
+.detected-item:hover {
+  background: rgba(255, 255, 255, 0.02);
+  border-color: rgba(255, 255, 255, 0.03);
+}
+
+.detected-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.detected-actions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+@media (max-width: 640px) {
+  .detected-item {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .detected-actions {
+    justify-content: flex-end;
+    width: 100%;
+    margin-top: 0.5rem;
+  }
 }
 
 .detected-header {
@@ -482,13 +563,83 @@ h4 {
 .rule-editor-grid {
   display: grid;
   grid-template-columns: 1fr 260px;
-  gap: 1rem;
+  gap: var(--card-gap);
   margin-bottom: 0.75rem;
 }
 
 .muted {
   color: var(--text-secondary);
   font-size: 0.875rem;
+}
+
+/* Rule editor input/select adjustments */
+.rule-editor .field-group input,
+.rule-editor .field-group select {
+  width: 100%;
+  height: 44px;
+  padding: 10px 12px;
+  border-radius: calc(var(--radius-md) - 2px);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-primary);
+}
+
+.rule-editor .field-group select {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  background-image:
+    linear-gradient(45deg, transparent 50%, rgba(255, 255, 255, 0.35) 50%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.35) 50%, transparent 50%);
+  background-position:
+    calc(100% - 18px) calc(1em + 2px),
+    calc(100% - 13px) calc(1em + 2px);
+  background-size:
+    6px 6px,
+    6px 6px;
+  background-repeat: no-repeat;
+  padding-right: 40px;
+}
+
+/* Ensure native dropdown panels match dark theme in Chromium/Tauri */
+.field-group select,
+.rule-editor .field-group select,
+select {
+  background-color: rgba(255, 255, 255, 0.03);
+  color: var(--text-primary);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+/* Some browsers allow styling option backgrounds; set both just in case */
+.field-group select option,
+.rule-editor .field-group select option,
+select option {
+  background-color: rgba(15, 17, 23, 0.95);
+  color: var(--text-primary);
+}
+
+/* For Chromium's popup, try to nudge the dropdown to dark via -webkit-appearance none */
+select::-webkit-menu-list-button {
+  background-color: rgba(15, 17, 23, 0.95);
+  color: var(--text-primary);
+}
+
+/* Make directory path wrap nicely */
+.rule-row .rule-main strong {
+  display: block;
+  word-break: break-all;
+  max-width: 60ch;
+}
+
+.rule-actions .btn {
+  min-width: 96px;
+}
+
+/* Improve visual spacing for the rule list container */
+.rule-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
 }
 
 @media (max-width: 768px) {
@@ -604,5 +755,98 @@ h4 {
     transition: none;
     transform: none;
     opacity: 1;
+  }
+}
+
+/* Button, typography, focus, responsive & animation tweaks */
+
+.btn {
+  padding: 10px 18px;
+  font-size: 0.95rem;
+}
+
+.btn-primary {
+  padding: 10px 18px;
+  background: linear-gradient(135deg, var(--accent-color), #5b21b6);
+  box-shadow: 0 6px 18px rgba(124, 58, 237, 0.36);
+}
+
+.btn-secondary {
+  padding: 9px 16px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-primary);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.btn:focus-visible {
+  box-shadow:
+    0 0 0 3px rgba(15, 17, 23, 0.6),
+    0 0 0 6px rgba(124, 58, 237, 0.22);
+}
+
+/* Make profile card and detected items focusable outlines more visible */
+.profile-card:focus-visible,
+.detected-item:focus-visible,
+.rule-row:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 4px rgba(124, 58, 237, 0.12);
+  border-color: rgba(124, 58, 237, 0.12);
+}
+
+/* Typography tweaks */
+.profile-info h3 {
+  font-size: 1.125rem;
+  font-weight: 700;
+}
+
+.muted {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+/* Profile actions responsiveness */
+@media (max-width: 640px) {
+  .profile-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .profile-actions .btn {
+    flex: 1 1 auto;
+  }
+
+  .profile-actions .btn + .btn {
+    margin-left: 0.5rem;
+  }
+}
+
+/* Subtle entry hover animations for lists */
+.detected-item,
+.profile-card,
+.rule-row {
+  transition:
+    transform var(--transition-fast),
+    box-shadow var(--transition-fast),
+    background var(--transition-fast);
+}
+
+.detected-item:hover,
+.profile-card:hover,
+.rule-row:hover {
+  transform: translateY(-2px);
+}
+
+/* Utility small animation class usable by components */
+.animate-subtle {
+  animation: fadeIn 240ms ease both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-subtle,
+  .detected-item:hover,
+  .profile-card:hover,
+  .rule-row:hover {
+    transform: none;
+    animation: none;
   }
 }

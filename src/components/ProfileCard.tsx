@@ -1,6 +1,9 @@
 import React from "react";
 import { User, Mail, Trash2, CheckCircle2, Pencil } from "lucide-react";
 import { GitProfile, useProfileStore } from "../stores/useProfileStore";
+import { invoke } from "@tauri-apps/api/core";
+import { useToast } from "./ui/useToast";
+import ConfirmModal from "./ui/ConfirmModal";
 
 interface ProfileCardProps {
   profile: GitProfile;
@@ -13,7 +16,11 @@ export const ProfileCard: React.FC<ProfileCardProps> = ({
   isActive,
   onEdit,
 }) => {
-  const { switchProfileGlobally, deleteProfile, loading } = useProfileStore();
+  const { deleteProfile, loading } = useProfileStore();
+  const toast = useToast();
+  const [confirmOpen, setConfirmOpen] = React.useState(false);
+  const [confirmBusy, setConfirmBusy] = React.useState(false);
+  const [pendingSnapshot, setPendingSnapshot] = React.useState<any>(null);
 
   return (
     <div
@@ -45,13 +52,83 @@ export const ProfileCard: React.FC<ProfileCardProps> = ({
 
       <div className="profile-actions">
         {!isActive && (
-          <button
-            className="btn btn-primary"
-            onClick={() => switchProfileGlobally(profile.id)}
-            disabled={loading}
-          >
-            Switch to Profile
-          </button>
+          <>
+            <button
+              className="btn btn-primary"
+              onClick={async () => {
+                try {
+                  setConfirmBusy(true);
+                  const snapshot = await invoke<any>(
+                    "snapshot_global_git_config",
+                  );
+                  setPendingSnapshot(snapshot);
+                  setConfirmBusy(false);
+                  setConfirmOpen(true);
+                } catch (e: any) {
+                  setConfirmBusy(false);
+                  toast.show({
+                    message: `Failed to prepare switch: ${e}`,
+                    kind: "error",
+                  });
+                }
+              }}
+              disabled={loading}
+            >
+              Switch to Profile
+            </button>
+
+            <ConfirmModal
+              open={confirmOpen}
+              title={`Switch global Git identity?`}
+              description={`Switch global Git identity to ${profile.name} <${profile.email}>? This updates your global git config.`}
+              confirmLabel="Switch"
+              cancelLabel="Cancel"
+              busy={confirmBusy}
+              onCancel={() => setConfirmOpen(false)}
+              onConfirm={async () => {
+                setConfirmBusy(true);
+                try {
+                  await invoke("switch_profile_globally", { id: profile.id });
+                  await useProfileStore.getState().fetchProfiles();
+
+                  toast.show({
+                    message: `Switched to ${profile.label}`,
+                    kind: "success",
+                    actions: [
+                      {
+                        label: "Undo",
+                        onClick: async () => {
+                          try {
+                            if (pendingSnapshot) {
+                              await invoke("restore_global_git_config", {
+                                snapshot: pendingSnapshot,
+                              });
+                              await useProfileStore.getState().fetchProfiles();
+                              toast.show({
+                                message: "Restored previous Git config",
+                                kind: "success",
+                              });
+                            }
+                          } catch (err) {
+                            toast.show({
+                              message: `Restore failed: ${err}`,
+                              kind: "error",
+                            });
+                          }
+                        },
+                      },
+                    ],
+                  });
+                } catch (e: any) {
+                  toast.show({ message: `Switch failed: ${e}`, kind: "error" });
+                } finally {
+                  setConfirmBusy(false);
+                  setConfirmOpen(false);
+                  setPendingSnapshot(null);
+                }
+              }}
+            />
+          </>
         )}
         <button
           className="btn btn-secondary"

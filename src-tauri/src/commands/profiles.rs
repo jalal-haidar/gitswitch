@@ -1,11 +1,69 @@
 use std::path::Path;
 use std::process::Command;
+use serde::{Serialize, Deserialize};
 use tauri::AppHandle;
 use uuid::Uuid;
 
 use crate::config::store;
 use crate::models::GitProfile;
 use crate::errors::BackendError;
+
+// Server-side validation/sanitization helpers
+fn sanitize_string(s: &str, max_len: usize) -> String {
+    let mut out = s.chars().filter(|c| !c.is_control()).collect::<String>();
+    out.truncate(max_len);
+    out.trim().to_string()
+}
+
+fn is_plausible_email(email: &str) -> bool {
+    // Basic check: has '@' and a '.' after it, and reasonable length
+    if email.len() < 3 || email.len() > 254 {
+        return false;
+    }
+    let bytes = email.as_bytes();
+    if let Some(at_pos) = bytes.iter().position(|&b| b == b'@') {
+        // require a dot after '@'
+        return bytes.iter().skip(at_pos + 1).any(|&b| b == b'.');
+    }
+    false
+}
+
+fn validate_and_sanitize_profile(p: &mut GitProfile) -> Result<(), String> {
+    // Limits chosen conservatively
+    p.label = sanitize_string(&p.label, 100);
+    p.name = sanitize_string(&p.name, 200);
+    p.email = sanitize_string(&p.email, 254);
+    p.color = sanitize_string(&p.color, 32);
+
+    if let Some(ref mut ssh) = p.ssh_key_path.clone() {
+        let s = sanitize_string(&ssh, 1024);
+        if s.is_empty() {
+            p.ssh_key_path = None;
+        } else {
+            p.ssh_key_path = Some(s);
+        }
+    }
+
+    if let Some(ref mut gpg) = p.gpg_key_id.clone() {
+        let s = sanitize_string(&gpg, 128);
+        if s.is_empty() {
+            p.gpg_key_id = None;
+        } else {
+            p.gpg_key_id = Some(s);
+        }
+    }
+
+    // Basic required fields
+    if p.name.is_empty() {
+        return Err("Profile name must not be empty".to_string());
+    }
+
+    if p.email.is_empty() || !is_plausible_email(&p.email) {
+        return Err("Profile email is missing or invalid".to_string());
+    }
+
+    Ok(())
+}
 
 #[tauri::command]
 pub fn get_profiles(app: AppHandle) -> Result<Vec<GitProfile>, String> {
@@ -21,6 +79,9 @@ pub fn get_active_profile_id(app: AppHandle) -> Result<Option<String>, String> {
 
 #[tauri::command]
 pub fn add_profile(app: AppHandle, mut profile: GitProfile) -> Result<GitProfile, String> {
+    // sanitize and validate incoming profile fields
+    validate_and_sanitize_profile(&mut profile)?;
+
     let mut config = store::load_config(&app).map_err(|e| e.to_string())?;
     
     // Assign a new ID if it's empty
@@ -48,6 +109,10 @@ pub fn add_profile(app: AppHandle, mut profile: GitProfile) -> Result<GitProfile
 
 #[tauri::command]
 pub fn update_profile(app: AppHandle, profile: GitProfile) -> Result<GitProfile, String> {
+    // Validate and sanitize update payload
+    let mut profile = profile;
+    validate_and_sanitize_profile(&mut profile)?;
+
     let mut config = store::load_config(&app).map_err(|e| e.to_string())?;
     
     let mut found = false;
@@ -185,14 +250,26 @@ pub fn set_active_profile(app: AppHandle, id: String) -> Result<(), String> {
 
 #[tauri::command]
 pub fn apply_identity(_app: AppHandle, name: String, email: String, gpg_key: Option<String>) -> Result<(), String> {
+    // Sanitize inputs
+    let name = sanitize_string(&name, 200);
+    let email = sanitize_string(&email, 254);
+
+    if name.is_empty() {
+        return Err("Identity name must not be empty".to_string());
+    }
+    if email.is_empty() || !is_plausible_email(&email) {
+        return Err("Identity email is missing or invalid".to_string());
+    }
+
     // Apply the given identity directly to global git config
     execute_git_command(vec!["config", "--global", "user.name", &name])?;
     execute_git_command(vec!["config", "--global", "user.email", &email])?;
 
     if let Some(ref gpg) = gpg_key {
+        let gpg = sanitize_string(gpg, 128);
         if !gpg.is_empty() {
-            execute_git_command(vec!["config", "--global", "user.signingkey", gpg])?;
-            execute_git_command(vec!["config", "--global", "commit.gpgsign", "true"])?;
+            execute_git_command(vec!["config", "--global", "user.signingkey", &gpg])?;
+            execute_git_command(vec!["config", "--global", "commit.gpgsign", "true"]).ok();
         } else {
             execute_git_command(vec!["config", "--global", "--unset", "user.signingkey"]).ok();
             execute_git_command(vec!["config", "--global", "commit.gpgsign", "false"]).ok();
@@ -200,6 +277,93 @@ pub fn apply_identity(_app: AppHandle, name: String, email: String, gpg_key: Opt
     } else {
         execute_git_command(vec!["config", "--global", "--unset", "user.signingkey"]).ok();
         execute_git_command(vec!["config", "--global", "commit.gpgsign", "false"]).ok();
+    }
+
+    Ok(())
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct GitConfigSnapshot {
+    pub user_name: Option<String>,
+    pub user_email: Option<String>,
+    pub user_signingkey: Option<String>,
+    pub commit_gpgsign: Option<String>,
+}
+
+fn capture_git_config_value(args: Vec<&str>) -> Result<Option<String>, String> {
+    let mut command = Command::new("git");
+    command.args(&args);
+
+    let output = command.output().map_err(|e| {
+        if e.kind() == std::io::ErrorKind::NotFound {
+            BackendError::git_not_found().to_string()
+        } else {
+            BackendError::io_error(format!("Failed to execute git command: {}", e)).to_string()
+        }
+    })?;
+
+    if !output.status.success() {
+        // If value isn't set, git returns non-zero; treat as None
+        return Ok(None);
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    Ok(Some(stdout.trim().to_string()))
+}
+
+#[tauri::command]
+pub fn snapshot_global_git_config(_app: AppHandle) -> Result<GitConfigSnapshot, String> {
+    snapshot_global_git_config_inner()
+}
+
+pub fn snapshot_global_git_config_inner() -> Result<GitConfigSnapshot, String> {
+    let name = capture_git_config_value(vec!["config", "--global", "--get", "user.name"])?;
+    let email = capture_git_config_value(vec!["config", "--global", "--get", "user.email"])?;
+    let signing = capture_git_config_value(vec!["config", "--global", "--get", "user.signingkey"])?;
+    let gpgsign = capture_git_config_value(vec!["config", "--global", "--get", "commit.gpgsign"])?;
+
+    Ok(GitConfigSnapshot {
+        user_name: name,
+        user_email: email,
+        user_signingkey: signing,
+        commit_gpgsign: gpgsign,
+    })
+}
+
+#[tauri::command]
+pub fn restore_global_git_config(_app: AppHandle, snapshot: GitConfigSnapshot) -> Result<(), String> {
+    restore_global_git_config_inner(snapshot)
+}
+
+pub fn restore_global_git_config_inner(snapshot: GitConfigSnapshot) -> Result<(), String> {
+    // name
+    if let Some(name) = snapshot.user_name {
+        execute_git_command(vec!["config", "--global", "user.name", &name])?;
+    } else {
+        execute_git_command(vec!["config", "--global", "--unset", "user.name"]).ok();
+    }
+
+    // email
+    if let Some(email) = snapshot.user_email {
+        execute_git_command(vec!["config", "--global", "user.email", &email])?;
+    } else {
+        execute_git_command(vec!["config", "--global", "--unset", "user.email"]).ok();
+    }
+
+    // signing key
+    if let Some(gpg) = snapshot.user_signingkey {
+        if !gpg.is_empty() {
+            execute_git_command(vec!["config", "--global", "user.signingkey", &gpg])?;
+            execute_git_command(vec!["config", "--global", "commit.gpgsign", "true"]).ok();
+        }
+    } else {
+        execute_git_command(vec!["config", "--global", "--unset", "user.signingkey"]).ok();
+        execute_git_command(vec!["config", "--global", "commit.gpgsign", "false"]).ok();
+    }
+
+    if let Some(gpgsign) = snapshot.commit_gpgsign {
+        // attempt to set to the snapshot value (true/false)
+        execute_git_command(vec!["config", "--global", "commit.gpgsign", &gpgsign])?;
     }
 
     Ok(())
@@ -252,5 +416,14 @@ mod tests {
                 // the error string should include serialized BackendError with kind GitFailed
                 assert!(err.contains("GitFailed") || err.to_lowercase().contains("git command failed"), "unexpected error payload: {}", err);
             }
+    }
+
+    #[test]
+    fn snapshot_and_restore_roundtrip() {
+        // Snapshot current global git config and immediately restore it.
+        // This should succeed and leave the user's global config unchanged.
+        let snap = snapshot_global_git_config_inner().expect("snapshot failed");
+        let res = restore_global_git_config_inner(snap);
+        assert!(res.is_ok(), "restore failed: {:?}", res);
     }
 }

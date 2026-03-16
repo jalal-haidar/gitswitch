@@ -12,6 +12,20 @@ pub fn get_auto_switch_enabled(app: AppHandle) -> Result<bool, String> {
 }
 
 #[tauri::command]
+pub fn get_store_sensitive_in_keyring(app: AppHandle) -> Result<bool, String> {
+    let config = store::load_config(&app).map_err(|e| e.to_string())?;
+    Ok(config.settings.store_sensitive_in_keyring)
+}
+
+#[tauri::command]
+pub fn set_store_sensitive_in_keyring(app: AppHandle, enabled: bool) -> Result<bool, String> {
+    let mut config = store::load_config(&app).map_err(|e| e.to_string())?;
+    config.settings.store_sensitive_in_keyring = enabled;
+    store::save_config(&app, &config).map_err(|e| e.to_string())?;
+    Ok(config.settings.store_sensitive_in_keyring)
+}
+
+#[tauri::command]
 pub fn set_auto_switch_enabled(app: AppHandle, enabled: bool) -> Result<bool, String> {
     let mut config = store::load_config(&app).map_err(|e| e.to_string())?;
     config.settings.auto_switch = enabled;

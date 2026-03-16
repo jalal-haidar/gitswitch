@@ -31,6 +31,16 @@
 - `src/`: React frontend, providing a premium UI for identity management.
 - `docs/`: Technical documentation and architecture overviews.
 
+## 🔄 In-App Updates
+
+The app is configured for Tauri updater-based releases.
+
+- Release workflow: `.github/workflows/release.yml`
+- App updater config: `src-tauri/tauri.conf.json` (`plugins.updater`)
+- Setup guide: `docs/UPDATER_SETUP.md`
+
+Important: set `plugins.updater.pubkey` in `src-tauri/tauri.conf.json` to your real signer public key before publishing updates.
+
 ## 🚀 Getting Started
 
 1.  **Install Dependencies:**
