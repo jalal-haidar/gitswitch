@@ -171,6 +171,19 @@ pub fn switch_profile_for_repo(app: AppHandle, id: String, repo_path: &Path) -> 
 }
 
 #[tauri::command]
+pub fn set_active_profile(app: AppHandle, id: String) -> Result<(), String> {
+    let mut config = store::load_config(&app).map_err(|e| e.to_string())?;
+    // ensure profile exists
+    let exists = config.profiles.iter().any(|p| p.id == id);
+    if !exists {
+        return Err("Profile not found".to_string());
+    }
+    config.active_profile_id = Some(id);
+    store::save_config(&app, &config).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
 pub fn apply_identity(_app: AppHandle, name: String, email: String, gpg_key: Option<String>) -> Result<(), String> {
     // Apply the given identity directly to global git config
     execute_git_command(vec!["config", "--global", "user.name", &name])?;

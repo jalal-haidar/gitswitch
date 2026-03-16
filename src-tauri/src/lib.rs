@@ -20,6 +20,7 @@ pub fn run() {
             commands::profiles::delete_profile,
             commands::profiles::switch_profile_globally,
             commands::profiles::apply_identity,
+            commands::profiles::set_active_profile,
             commands::detect::detect_identities,
             commands::rules::get_auto_switch_enabled,
             commands::rules::set_auto_switch_enabled,

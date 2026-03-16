@@ -12,7 +12,6 @@ export const DetectedProfilesList: React.FC = () => {
   const findExistingProfile = useProfileStore((s) => s.findExistingProfile);
 
   const [importingId, setImportingId] = useState<string | null>(null);
-  const [applyingId, setApplyingId] = useState<string | null>(null);
   const toast = useToast();
 
   const handleImport = async (p: GitProfile) => {
@@ -55,36 +54,62 @@ export const DetectedProfilesList: React.FC = () => {
     }
   };
 
-  const handleApply = async (p: GitProfile) => {
-    setApplyingId(p.id);
+  const handleImportAndActivate = async (p: GitProfile) => {
+    setImportingId(p.id);
     try {
-      await invoke("apply_identity", {
-        name: p.name,
-        email: p.email,
-        gpg_key: p.gpgKeyId ?? null,
+      const existing = findExistingProfile(p.name, p.email);
+      let created: GitProfile | undefined = undefined;
+      if (!existing) {
+        created = await addProfile({
+          label: p.label || "Imported",
+          name: p.name,
+          email: p.email,
+          color: p.color || "#6A5ACD",
+          isDefault: false,
+          sshKeyPath: p.sshKeyPath,
+          gpgKeyId: p.gpgKeyId,
+        });
+      }
+
+      const toActivateId = existing ? existing.id : created?.id;
+      if (!toActivateId) {
+        throw new Error("Failed to determine profile id to activate");
+      }
+
+      await invoke("set_active_profile", { id: toActivateId });
+      // refresh profiles in store
+      await useProfileStore.getState().fetchProfiles();
+
+      toast.show({
+        message: `Imported and activated ${p.name}`,
+        kind: "success",
       });
-      toast.show({ message: `Applied ${p.name}`, kind: "success" });
     } catch (e: any) {
-      console.error("apply_identity failed", e);
       const info = normalizeBackendError(e?.toString?.() ?? e);
       const actions = [] as { label: string; onClick: () => void }[];
-      actions.push({ label: "Retry", onClick: () => handleApply(p) });
+      actions.push({
+        label: "Retry",
+        onClick: () => handleImportAndActivate(p),
+      });
       if (info.hint && typeof info.hint === "string") {
         actions.push({
           label: "Help",
           onClick: () => window.open(info.hint as string, "_blank"),
         });
       }
+
       toast.show({
-        message: `Apply failed: ${info.message}`,
+        message: `Import & activate failed: ${info.message}`,
         kind: "error",
         duration: info.hint ? 10000 : 7000,
         actions,
       });
     } finally {
-      setApplyingId(null);
+      setImportingId(null);
     }
   };
+
+  // "Apply" action removed: writing directly to Git config is no longer supported.
 
   return (
     <div className="detected-list">
@@ -120,10 +145,10 @@ export const DetectedProfilesList: React.FC = () => {
                 </button>
                 <button
                   className="btn btn-primary"
-                  onClick={() => handleApply(p)}
-                  disabled={!!applyingId || detectLoading}
+                  onClick={() => handleImportAndActivate(p)}
+                  disabled={!!importingId || detectLoading}
                 >
-                  {applyingId === p.id ? "Applying…" : "Apply"}
+                  {importingId === p.id ? "Importing…" : "Import + Set Active"}
                 </button>
               </div>
             </div>
