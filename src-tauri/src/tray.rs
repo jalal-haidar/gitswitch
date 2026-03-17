@@ -1,8 +1,63 @@
 use tauri::{AppHandle, Manager, Emitter};
 use tauri::menu::{Menu, MenuItem, CheckMenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+use image::{ImageBuffer, ImageEncoder, Rgba, RgbaImage};
 
 use crate::config::store;
+
+/// Parse a hex color string (e.g., "#7C3AED") into RGB components
+fn parse_hex_color(hex: &str) -> (u8, u8, u8) {
+    let hex = hex.trim_start_matches('#');
+    if hex.len() == 6 {
+        let r = u8::from_str_radix(&hex[0..2], 16).unwrap_or(124);
+        let g = u8::from_str_radix(&hex[2..4], 16).unwrap_or(58);
+        let b = u8::from_str_radix(&hex[4..6], 16).unwrap_or(237);
+        (r, g, b)
+    } else {
+        // Default purple if parsing fails
+        (124, 58, 237)
+    }
+}
+
+/// Generate a colored tray icon (32x32 circle on transparent background)
+fn generate_colored_icon(color: &str) -> Option<tauri::image::Image<'static>> {
+    let size = 32u32;
+    let radius = 12.0f32;
+    let center = (size / 2) as f32;
+    
+    let (r, g, b) = parse_hex_color(color);
+    let mut img: RgbaImage = ImageBuffer::new(size, size);
+    
+    // Draw a filled circle
+    for y in 0..size {
+        for x in 0..size {
+            let dx = x as f32 - center;
+            let dy = y as f32 - center;
+            let distance = (dx * dx + dy * dy).sqrt();
+            
+            if distance <= radius {
+                // Filled circle with profile color
+                img.put_pixel(x, y, Rgba([r, g, b, 255]));
+            } else if distance <= radius + 1.0 {
+                // Anti-aliasing edge
+                let alpha = ((radius + 1.0 - distance) * 255.0) as u8;
+                img.put_pixel(x, y, Rgba([r, g, b, alpha]));
+            }
+            // else: transparent (default)
+        }
+    }
+    
+    // Encode to PNG bytes
+    let mut png_bytes = Vec::new();
+    if image::codecs::png::PngEncoder::new(&mut png_bytes)
+        .write_image(&img, size, size, image::ColorType::Rgba8.into())
+        .is_err()
+    {
+        return None;
+    }
+    
+    tauri::image::Image::from_bytes(&png_bytes).ok()
+}
 
 /// Build or rebuild the tray context menu from the current config.
 pub fn build_tray_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
@@ -59,10 +114,14 @@ pub fn refresh_tray(app: &AppHandle) {
         let _ = tray.set_menu(Some(menu));
     }
 
-    // Update tooltip
+    // Update tooltip and icon based on active profile
     let config = store::load_config(app).unwrap_or_default();
     let tooltip = if let Some(active_id) = &config.active_profile_id {
         if let Some(p) = config.profiles.iter().find(|p| &p.id == active_id) {
+            // Update icon with profile color
+            if let Some(icon) = generate_colored_icon(&p.color) {
+                let _ = tray.set_icon(Some(icon));
+            }
             format!("GitSwitch — {}", p.label)
         } else {
             "GitSwitch".to_string()
@@ -78,18 +137,22 @@ pub fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
     let menu = build_tray_menu(app.handle())?;
 
     let config = store::load_config(app.handle()).unwrap_or_default();
-    let initial_tooltip = if let Some(active_id) = &config.active_profile_id {
+    
+    // Get initial icon and tooltip from active profile
+    let (initial_icon, initial_tooltip) = if let Some(active_id) = &config.active_profile_id {
         if let Some(p) = config.profiles.iter().find(|p| &p.id == active_id) {
-            format!("GitSwitch — {}", p.label)
+            let icon = generate_colored_icon(&p.color)
+                .unwrap_or_else(|| app.default_window_icon().unwrap().clone());
+            (icon, format!("GitSwitch — {}", p.label))
         } else {
-            "GitSwitch".to_string()
+            (app.default_window_icon().unwrap().clone(), "GitSwitch".to_string())
         }
     } else {
-        "GitSwitch".to_string()
+        (app.default_window_icon().unwrap().clone(), "GitSwitch".to_string())
     };
 
     TrayIconBuilder::with_id("main-tray")
-        .icon(app.default_window_icon().unwrap().clone())
+        .icon(initial_icon)
         .menu(&menu)
         .tooltip(initial_tooltip)
         .show_menu_on_left_click(false)
