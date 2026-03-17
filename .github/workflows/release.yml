@@ -64,6 +64,24 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Validate updater signing secrets
+        shell: pwsh
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:TAURI_SIGNING_PRIVATE_KEY)) {
+            throw "TAURI_SIGNING_PRIVATE_KEY is empty or missing"
+          }
+
+          npx tauri signer sign package.json
+
+          if (-not (Test-Path "package.json.sig")) {
+            throw "Signer did not produce package.json.sig. Check TAURI_SIGNING_PRIVATE_KEY and TAURI_SIGNING_PRIVATE_KEY_PASSWORD."
+          }
+
+          Remove-Item "package.json.sig" -Force
+
       - name: Build and publish release (with updater artifacts)
         uses: tauri-apps/tauri-action@v0
         with:
