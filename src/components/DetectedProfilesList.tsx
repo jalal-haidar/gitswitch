@@ -11,7 +11,6 @@ export const DetectedProfilesList: React.FC = () => {
   const detectError = useProfileStore((s) => s.detectError);
   const addProfile = useProfileStore((s) => s.addProfile);
   const findExistingProfile = useProfileStore((s) => s.findExistingProfile);
-  const profiles = useProfileStore((s) => s.profiles);
 
   const [importingId, setImportingId] = useState<string | null>(null);
   const toast = useToast();
