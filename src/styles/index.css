@@ -152,6 +152,15 @@ body {
   width: 100%;
 }
 
+.settings-row {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.settings-row .btn {
+  flex: 1;
+}
+
 .btn {
   display: inline-flex;
   align-items: center;

@@ -63,7 +63,9 @@ export const Dashboard: React.FC = () => {
       });
     };
     setup();
-    return () => { unlisten?.(); };
+    return () => {
+      unlisten?.();
+    };
   }, []);
 
   useEffect(() => {

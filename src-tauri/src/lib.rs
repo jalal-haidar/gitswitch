@@ -23,6 +23,8 @@ pub fn run() {
             commands::profiles::update_profile,
             commands::profiles::delete_profile,
             commands::profiles::switch_profile_globally,
+            commands::profiles::export_profiles,
+            commands::profiles::import_profiles,
             commands::profiles::snapshot_global_git_config,
             commands::profiles::restore_global_git_config,
             commands::profiles::apply_identity,

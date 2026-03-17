@@ -1,5 +1,6 @@
 use std::path::Path;
 use std::process::Command;
+use std::io::Write;
 use serde::{Serialize, Deserialize};
 use tauri::AppHandle;
 use uuid::Uuid;
@@ -310,6 +311,69 @@ fn capture_git_config_value(args: Vec<&str>) -> Result<Option<String>, String> {
 
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     Ok(Some(stdout.trim().to_string()))
+}
+
+#[derive(Serialize, Deserialize)]
+struct ProfilesExport {
+    version: u32,
+    profiles: Vec<GitProfile>,
+}
+
+#[tauri::command]
+pub fn export_profiles(app: AppHandle, path: String) -> Result<(), String> {
+    let config = store::load_config(&app).map_err(|e| e.to_string())?;
+    let export = ProfilesExport {
+        version: 1,
+        profiles: config.profiles,
+    };
+    let json = serde_json::to_string_pretty(&export)
+        .map_err(|e| format!("Serialization error: {e}"))?;
+    let mut file = std::fs::File::create(&path)
+        .map_err(|e| format!("Could not create file: {e}"))?;
+    file.write_all(json.as_bytes())
+        .map_err(|e| format!("Write error: {e}"))?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn import_profiles(app: AppHandle, path: String) -> Result<ImportResult, String> {
+    let json = std::fs::read_to_string(&path)
+        .map_err(|e| format!("Could not read file: {e}"))?;
+    let export: ProfilesExport = serde_json::from_str(&json)
+        .map_err(|_| "Invalid or unrecognised export file.".to_string())?;
+
+    let mut config = store::load_config(&app).map_err(|e| e.to_string())?;
+    let mut added = 0u32;
+    let mut skipped = 0u32;
+
+    for mut profile in export.profiles {
+        // Check duplicate by name + email (case-insensitive)
+        let exists = config.profiles.iter().any(|p| {
+            p.name.trim().to_lowercase() == profile.name.trim().to_lowercase()
+                && p.email.trim().to_lowercase() == profile.email.trim().to_lowercase()
+        });
+        if exists {
+            skipped += 1;
+            continue;
+        }
+        // Always assign a fresh id to avoid collisions
+        profile.id = Uuid::new_v4().to_string();
+        profile.is_default = false;
+        config.profiles.push(profile);
+        added += 1;
+    }
+
+    store::save_config(&app, &config).map_err(|e| e.to_string())?;
+    if added > 0 {
+        crate::tray::refresh_tray(&app);
+    }
+    Ok(ImportResult { added, skipped })
+}
+
+#[derive(Serialize)]
+pub struct ImportResult {
+    added: u32,
+    skipped: u32,
 }
 
 #[tauri::command]

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
-import { X, Shield, RefreshCw } from "lucide-react";
+import { X, Shield, RefreshCw, Download, Upload } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
+import { save as saveDialog, open as openDialog } from "@tauri-apps/plugin-dialog";
 import { check } from "@tauri-apps/plugin-updater";
 
 export const Settings: React.FC<{ onClose: () => void }> = ({ onClose }) => {
@@ -8,6 +9,10 @@ export const Settings: React.FC<{ onClose: () => void }> = ({ onClose }) => {
   const [loading, setLoading] = useState(false);
   const [updateLoading, setUpdateLoading] = useState(false);
   const [updateMessage, setUpdateMessage] = useState<string>("");
+  const [exportMsg, setExportMsg] = useState("");
+  const [importMsg, setImportMsg] = useState("");
+  const [exportLoading, setExportLoading] = useState(false);
+  const [importLoading, setImportLoading] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -33,6 +38,42 @@ export const Settings: React.FC<{ onClose: () => void }> = ({ onClose }) => {
       // ignore
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleExport = async () => {
+    setExportLoading(true);
+    setExportMsg("");
+    try {
+      const path = await saveDialog({
+        defaultPath: "gitswitch-profiles.json",
+        filters: [{ name: "JSON", extensions: ["json"] }],
+      });
+      if (!path) return;
+      await invoke("export_profiles", { path });
+      setExportMsg("Profiles exported successfully.");
+    } catch (e) {
+      setExportMsg(`Export failed: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setExportLoading(false);
+    }
+  };
+
+  const handleImport = async () => {
+    setImportLoading(true);
+    setImportMsg("");
+    try {
+      const path = await openDialog({
+        multiple: false,
+        filters: [{ name: "JSON", extensions: ["json"] }],
+      });
+      if (!path) return;
+      const result = await invoke<{ added: number; skipped: number }>("import_profiles", { path });
+      setImportMsg(`Imported ${result.added} profile(s)${result.skipped ? `, skipped ${result.skipped} duplicate(s)` : "."}`);
+    } catch (e) {
+      setImportMsg(`Import failed: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setImportLoading(false);
     }
   };
 
@@ -123,6 +164,35 @@ export const Settings: React.FC<{ onClose: () => void }> = ({ onClose }) => {
           {updateMessage && (
             <p className="muted settings-hint">{updateMessage}</p>
           )}
+        </div>
+
+        <div className="settings-divider" />
+
+        <div className="settings-section">
+          <div className="settings-section-title">
+            <Download size={14} />
+            Profiles Backup
+          </div>
+          <div className="settings-row">
+            <button
+              className="btn btn-secondary"
+              type="button"
+              disabled={exportLoading}
+              onClick={handleExport}
+            >
+              <Download size={14} /> {exportLoading ? "Exporting…" : "Export profiles"}
+            </button>
+            <button
+              className="btn btn-secondary"
+              type="button"
+              disabled={importLoading}
+              onClick={handleImport}
+            >
+              <Upload size={14} /> {importLoading ? "Importing…" : "Import profiles"}
+            </button>
+          </div>
+          {exportMsg && <p className="muted settings-hint">{exportMsg}</p>}
+          {importMsg && <p className="muted settings-hint">{importMsg}</p>}
         </div>
       </div>
     </div>
