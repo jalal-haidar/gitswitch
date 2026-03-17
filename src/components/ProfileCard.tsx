@@ -21,6 +21,7 @@ export const ProfileCard: React.FC<ProfileCardProps> = ({
   const [confirmOpen, setConfirmOpen] = React.useState(false);
   const [confirmBusy, setConfirmBusy] = React.useState(false);
   const [pendingSnapshot, setPendingSnapshot] = React.useState<any>(null);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = React.useState(false);
 
   return (
     <div
@@ -140,7 +141,7 @@ export const ProfileCard: React.FC<ProfileCardProps> = ({
         </button>
         <button
           className="btn-icon delete-btn"
-          onClick={() => deleteProfile(profile.id)}
+          onClick={() => setDeleteConfirmOpen(true)}
           title="Delete Profile"
           aria-label={`Delete ${profile.label}`}
           disabled={loading}
@@ -148,6 +149,21 @@ export const ProfileCard: React.FC<ProfileCardProps> = ({
           <Trash2 size={16} />
         </button>
       </div>
+
+      <ConfirmModal
+        open={deleteConfirmOpen}
+        title="Delete profile?"
+        description={`Delete "${profile.label}"? This cannot be undone.`}
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        busy={loading}
+        onCancel={() => setDeleteConfirmOpen(false)}
+        onConfirm={async () => {
+          await deleteProfile(profile.id);
+          setDeleteConfirmOpen(false);
+          toast.show({ message: `Deleted ${profile.label}`, kind: "success" });
+        }}
+      />
     </div>
   );
 };

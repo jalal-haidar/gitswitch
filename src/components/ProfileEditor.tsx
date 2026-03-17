@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { open as openFilePicker } from "@tauri-apps/plugin-dialog";
 import type { GitProfile } from "../stores/useProfileStore";
 
 export interface ProfileEditorValue {
@@ -153,13 +154,29 @@ export const ProfileEditor: React.FC<ProfileEditorProps> = ({
         </label>
         <label className="field-group" htmlFor="profile-ssh">
           <span>SSH Key Path</span>
-          <input
-            id="profile-ssh"
-            aria-label="SSH key path"
-            value={value.sshKeyPath ?? ""}
-            onChange={(event) => setField("sshKeyPath", event.target.value)}
-            placeholder="C:\\Users\\you\\.ssh\\id_ed25519"
-          />
+          <div className="file-picker-row">
+            <input
+              id="profile-ssh"
+              aria-label="SSH key path"
+              value={value.sshKeyPath ?? ""}
+              onChange={(event) => setField("sshKeyPath", event.target.value)}
+              placeholder="C:\\Users\\you\\.ssh\\id_ed25519"
+            />
+            <button
+              type="button"
+              className="btn btn-secondary btn-browse"
+              title="Browse for SSH key file"
+              onClick={async () => {
+                const selected = await openFilePicker({
+                  multiple: false,
+                  title: "Select SSH Key",
+                });
+                if (selected) setField("sshKeyPath", selected as string);
+              }}
+            >
+              Browse
+            </button>
+          </div>
         </label>
         <label className="field-group" htmlFor="profile-gpg">
           <span>GPG Key ID</span>

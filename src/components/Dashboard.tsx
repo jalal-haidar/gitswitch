@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Plus, Users, RefreshCw, Settings as SettingsIcon } from "lucide-react";
 import Settings from "./Settings";
 
@@ -33,6 +33,36 @@ export const Dashboard: React.FC = () => {
     fetchProfiles();
     fetchDirectoryRules();
   }, [fetchDirectoryRules, fetchProfiles]);
+
+  // Keep a ref so the auto-switch listener always has the latest toast without re-subscribing
+  const toastRef = useRef(toast);
+  useEffect(() => { toastRef.current = toast; }, [toast]);
+
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    const setup = async () => {
+      const { listen } = await import("@tauri-apps/api/event");
+      unlisten = await listen<{ profile_id: string; path: string }>(
+        "auto-switch-triggered",
+        (event) => {
+          const state = useProfileStore.getState();
+          const profile = state.profiles.find((p) => p.id === event.payload.profile_id);
+          const label = profile?.label ?? event.payload.profile_id;
+          // Trim path to last 2 segments for readability
+          const segments = event.payload.path.replace(/\\/g, "/").split("/").filter(Boolean);
+          const shortPath = segments.slice(-2).join("/");
+          toastRef.current.show({
+            message: `Auto-switched to \"${label}\" (…/${shortPath})`,
+            kind: "success",
+            duration: 4500,
+          });
+          void state.fetchProfiles();
+        },
+      );
+    };
+    setup();
+    return () => { unlisten?.(); };
+  }, []);
 
   const toast = useToast();
   const duplicateExists = (value: ProfileEditorValue) => {

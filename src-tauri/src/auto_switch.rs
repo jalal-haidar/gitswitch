@@ -6,7 +6,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use notify::{Config as NotifyConfig, Event, RecommendedWatcher, RecursiveMode, Watcher};
 use serde::Serialize;
-use tauri::AppHandle;
+use tauri::{AppHandle, Emitter};
 
 use crate::commands::profiles::switch_profile_for_repo;
 use crate::config::store;
@@ -145,10 +145,19 @@ fn handle_event(app: &AppHandle, rules: &[ResolvedRule], event: &Event) {
     if let Err(error) = switch_profile_for_repo(app.clone(), match_rule.profile_id.clone(), &match_rule.root_path) {
         eprintln!("[auto-switch] failed to switch profile: {error}");
     } else {
+        let event_path = matched_path.to_string_lossy().to_string();
         set_last_auto_switch_event(
             match_rule.profile_id.clone(),
-            matched_path.to_string_lossy().to_string(),
+            event_path.clone(),
         );
+        let _ = app.emit("auto-switch-triggered", AutoSwitchEvent {
+            profile_id: match_rule.profile_id.clone(),
+            path: event_path,
+            occurred_at_epoch_ms: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_millis() as u64)
+                .unwrap_or(0),
+        });
     }
 }
 

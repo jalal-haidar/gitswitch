@@ -426,6 +426,24 @@ h4 {
   align-items: center;
 }
 
+.file-picker-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.file-picker-row input {
+  flex: 1;
+  min-width: 0;
+}
+
+.btn-browse {
+  padding: 8px 12px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  font-size: 0.8rem;
+}
+
 .color-input {
   width: 48px !important;
   min-width: 48px;
