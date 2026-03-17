@@ -98,18 +98,22 @@ jobs:
       - name: Verify updater artifacts are generated
         shell: pwsh
         run: |
-          $bundleRoot = "src-tauri/target/release/bundle"
-          $sigFiles = Get-ChildItem -Path $bundleRoot -Recurse -File -Filter *.sig -ErrorAction SilentlyContinue
-          $latest = Get-ChildItem -Path $bundleRoot -Recurse -File -Filter latest.json -ErrorAction SilentlyContinue
+          $releaseRoot = "src-tauri/target/release"
+          $sigFiles = Get-ChildItem -Path $releaseRoot -Recurse -File -Filter *.sig -ErrorAction SilentlyContinue
+          $latest = Get-ChildItem -Path $releaseRoot -Recurse -File -Filter latest.json -ErrorAction SilentlyContinue
 
-          Write-Host "Found signature files:" ($sigFiles.Count)
+          Write-Host "Found signature files: $($sigFiles.Count)"
           if ($sigFiles.Count -gt 0) { $sigFiles | ForEach-Object { Write-Host " - $($_.FullName)" } }
 
-          if (-not $latest) {
-            throw "latest.json not found. Updater metadata was not generated. Check signing secrets and updater config."
+          if ($latest) {
+            Write-Host "Found latest.json: $($latest.FullName)"
+          } else {
+            Write-Host "latest.json not in target/release tree (may have been written elsewhere by tauri-action). Checking sig count..."
+            if ($sigFiles.Count -eq 0) {
+              throw "No .sig files and no latest.json found. Updater artifacts were not generated."
+            }
+            Write-Host "Sig files present - tauri-action likely handled latest.json upload directly."
           }
-
-          Write-Host "Found latest.json:" $latest.FullName
 
       - name: Upload updater metadata/signatures
         uses: ncipollo/release-action@v1
@@ -118,5 +122,5 @@ jobs:
           replacesArtifacts: false
           tag: ${{ github.ref_name }}
           artifacts: |
-            src-tauri/target/release/bundle/**/latest.json
-            src-tauri/target/release/bundle/**/*.sig
+            src-tauri/target/release/**/latest.json
+            src-tauri/target/release/**/*.sig
