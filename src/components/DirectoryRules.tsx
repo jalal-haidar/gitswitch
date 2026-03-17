@@ -34,9 +34,22 @@ const RuleEditor: React.FC<{
   onCancel,
   onSubmit,
 }) => {
+  const [touchedPath, setTouchedPath] = useState(false);
+  const [touchedProfile, setTouchedProfile] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+
   const pathOk = value.path.trim() !== "";
   const profileOk = value.profileId.trim() !== "";
   const canSubmit = pathOk && profileOk && !duplicate;
+
+  const showPathError = (touchedPath || submitted) && !pathOk;
+  const showProfileError = (touchedProfile || submitted) && !profileOk;
+
+  const handleSubmit = async () => {
+    setSubmitted(true);
+    if (!canSubmit) return;
+    await onSubmit();
+  };
 
   return (
     <div className="glass-panel rule-editor">
@@ -48,9 +61,11 @@ const RuleEditor: React.FC<{
             aria-label="Directory path"
             placeholder="C:\\Users\\you\\work"
             value={value.path}
-            onChange={(event) =>
-              onChange({ ...value, path: event.target.value })
-            }
+            onChange={(event) => {
+              setTouchedPath(true);
+              onChange({ ...value, path: event.target.value });
+            }}
+            onBlur={() => setTouchedPath(true)}
           />
         </label>
 
@@ -60,9 +75,11 @@ const RuleEditor: React.FC<{
             id="rule-profile"
             aria-label="Profile selection"
             value={value.profileId}
-            onChange={(event) =>
-              onChange({ ...value, profileId: event.target.value })
-            }
+            onChange={(event) => {
+              setTouchedProfile(true);
+              onChange({ ...value, profileId: event.target.value });
+            }}
+            onBlur={() => setTouchedProfile(true)}
           >
             <option value="">Select profile…</option>
             {profiles.map((profile) => (
@@ -74,12 +91,12 @@ const RuleEditor: React.FC<{
         </label>
       </div>
 
-      {!pathOk && (
+      {showPathError && (
         <div className="form-error" role="alert" aria-live="polite">
           Path is required.
         </div>
       )}
-      {!profileOk && (
+      {showProfileError && (
         <div className="form-error" role="alert" aria-live="polite">
           Select a profile.
         </div>
@@ -97,8 +114,8 @@ const RuleEditor: React.FC<{
         <button
           className="btn btn-primary"
           type="button"
-          onClick={onSubmit}
-          disabled={!canSubmit || busy}
+          onClick={handleSubmit}
+          disabled={busy}
         >
           {busy ? "Saving…" : submitLabel}
         </button>

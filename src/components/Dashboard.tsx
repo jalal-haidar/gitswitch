@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Plus, Users, RefreshCw, Settings as SettingsIcon } from "lucide-react";
+import Settings from "./Settings";
 
 import { GitProfile, useProfileStore } from "../stores/useProfileStore";
 import { useToast } from "./ui/useToast";
@@ -118,7 +119,7 @@ export const Dashboard: React.FC = () => {
               <SettingsIcon size={16} />
             </button>
             <button
-              className="btn btn-ghost"
+              className="btn btn-ghost detect-btn"
               onClick={handleDetectClick}
               title="Detect identities"
               disabled={detectLoading}
@@ -191,5 +192,3 @@ export const Dashboard: React.FC = () => {
     </div>
   );
 };
-
-import Settings from "./Settings";

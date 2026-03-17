@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { X, Shield, RefreshCw } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { check } from "@tauri-apps/plugin-updater";
 
@@ -36,6 +37,11 @@ export const Settings: React.FC<{ onClose: () => void }> = ({ onClose }) => {
   };
 
   const handleCheckForUpdates = async () => {
+    if (import.meta.env.DEV) {
+      setUpdateMessage("Update checks are not available in development mode.");
+      return;
+    }
+
     setUpdateLoading(true);
     setUpdateMessage("Checking for updates...");
     try {
@@ -47,39 +53,42 @@ export const Settings: React.FC<{ onClose: () => void }> = ({ onClose }) => {
 
       setUpdateMessage(`Update found (v${update.version}). Downloading...`);
       await update.downloadAndInstall();
-      setUpdateMessage(
-        "Update installed. Please restart the app to apply the new version.",
-      );
-    } catch {
-      setUpdateMessage(
-        "Unable to check or install updates. Ensure updater endpoint and public key are configured.",
-      );
+      setUpdateMessage("Update installed. Please restart the app to apply it.");
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setUpdateMessage(`Update check failed: ${msg}`);
     } finally {
       setUpdateLoading(false);
     }
   };
 
   return (
-    <div className="modal-overlay" role="dialog" aria-modal="true">
-      <div className="modal-panel glass-panel">
-        <header
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-          }}
-        >
+    <div
+      className="modal-overlay"
+      role="dialog"
+      aria-modal="true"
+      onClick={onClose}
+    >
+      <div
+        className="modal-panel glass-panel"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="settings-header">
           <h3>Settings</h3>
           <button
-            className="btn btn-ghost"
+            className="btn-icon"
             onClick={onClose}
-            aria-label="Close"
+            aria-label="Close settings"
           >
-            Close
+            <X size={18} />
           </button>
-        </header>
+        </div>
 
-        <div style={{ marginTop: "1rem" }}>
+        <div className="settings-section">
+          <div className="settings-section-title">
+            <Shield size={14} />
+            Security
+          </div>
           <label className="checkbox-row" htmlFor="store-sensitive">
             <input
               id="store-sensitive"
@@ -88,20 +97,32 @@ export const Settings: React.FC<{ onClose: () => void }> = ({ onClose }) => {
               disabled={loading}
               onChange={(e) => toggle(e.currentTarget.checked)}
             />
-            <span>Store SSH/GPG paths in OS keyring (recommended)</span>
+            <span>Store SSH/GPG paths in OS keyring</span>
           </label>
+          <p className="muted settings-hint">
+            Moves sensitive paths out of profiles.json into the OS credential
+            store. Toggling migrates all existing profiles immediately.
+          </p>
+        </div>
 
-          <div style={{ marginTop: "1rem", display: "grid", gap: "0.5rem" }}>
-            <button
-              className="btn btn-secondary"
-              type="button"
-              disabled={updateLoading}
-              onClick={handleCheckForUpdates}
-            >
-              {updateLoading ? "Checking..." : "Check for updates"}
-            </button>
-            {updateMessage && <p className="muted">{updateMessage}</p>}
+        <div className="settings-divider" />
+
+        <div className="settings-section">
+          <div className="settings-section-title">
+            <RefreshCw size={14} />
+            Updates
           </div>
+          <button
+            className="btn btn-secondary settings-update-btn"
+            type="button"
+            disabled={updateLoading}
+            onClick={handleCheckForUpdates}
+          >
+            {updateLoading ? "Checking…" : "Check for updates"}
+          </button>
+          {updateMessage && (
+            <p className="muted settings-hint">{updateMessage}</p>
+          )}
         </div>
       </div>
     </div>
