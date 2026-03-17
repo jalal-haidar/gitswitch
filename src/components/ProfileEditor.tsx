@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import { open as openFilePicker } from "@tauri-apps/plugin-dialog";
 import type { GitProfile } from "../stores/useProfileStore";
 
@@ -55,11 +55,6 @@ export const ProfileEditor: React.FC<ProfileEditorProps> = ({
     initialValue ?? emptyProfile,
   );
   const [touched, setTouched] = useState(false);
-
-  useEffect(() => {
-    setValue(initialValue ?? emptyProfile);
-    setTouched(false);
-  }, [initialValue]);
 
   const emailValid = useMemo(
     () => /.+@.+\..+/.test(value.email.trim()),

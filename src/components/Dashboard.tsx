@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Plus, Users, RefreshCw, Settings as SettingsIcon } from "lucide-react";
 import Settings from "./Settings";
 
@@ -34,6 +35,17 @@ export const Dashboard: React.FC = () => {
     fetchProfiles();
     fetchDirectoryRules();
   }, [fetchDirectoryRules, fetchProfiles]);
+
+  // Update window title to reflect active profile
+  useEffect(() => {
+    const activeProfile = profiles.find((p) => p.id === activeProfileId);
+    const titleSuffix = activeProfile ? ` — ${activeProfile.label}` : "";
+    getCurrentWindow()
+      .setTitle(`GitSwitch${titleSuffix}`)
+      .catch(() => {
+        /* not in Tauri context */
+      });
+  }, [activeProfileId, profiles]);
 
   // Keep a ref so the auto-switch listener always has the latest toast without re-subscribing
   const toastRef = useRef(toast);
@@ -148,7 +160,12 @@ export const Dashboard: React.FC = () => {
 
       <section>
         <div className="section-header">
-          <h2>Your Profiles</h2>
+          <h2>
+            Your Profiles
+            {profiles.length > 0 && (
+              <span className="profile-count-badge">{profiles.length}</span>
+            )}
+          </h2>
           <div className="section-actions">
             <button
               className="btn btn-ghost"
@@ -179,6 +196,7 @@ export const Dashboard: React.FC = () => {
 
         {showCreate && (
           <ProfileEditor
+            key="create"
             submitLabel="Create Profile"
             busy={loading}
             isDuplicate={duplicateExists}
@@ -208,6 +226,7 @@ export const Dashboard: React.FC = () => {
                 />
                 {editingId === profile.id && (
                   <ProfileEditor
+                    key={editingId}
                     initialValue={toEditorValue(profile)}
                     submitLabel="Save Changes"
                     busy={loading}
