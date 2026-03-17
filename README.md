@@ -26,16 +26,16 @@ GitSwitch is a lightweight desktop app built with **Tauri + React** that lets yo
 
 ## ✨ Features
 
-| Feature | Status |
-|---|---|
-| Create & manage multiple Git profiles | ✅ |
-| One-click global identity switch | ✅ |
-| Per-directory auto-switch rules | ✅ |
-| Detect existing identities from git history | ✅ |
-| In-app auto-updater | ✅ |
-| Store SSH/GPG paths in OS keyring | ✅ |
-| System tray integration | 🔜 |
-| macOS / Linux support | 🔜 |
+| Feature                                     | Status |
+| ------------------------------------------- | ------ |
+| Create & manage multiple Git profiles       | ✅     |
+| One-click global identity switch            | ✅     |
+| Per-directory auto-switch rules             | ✅     |
+| Detect existing identities from git history | ✅     |
+| In-app auto-updater                         | ✅     |
+| Store SSH/GPG paths in OS keyring           | ✅     |
+| System tray integration                     | 🔜     |
+| macOS / Linux support                       | 🔜     |
 
 ---
 
@@ -45,9 +45,9 @@ GitSwitch is a lightweight desktop app built with **Tauri + React** that lets yo
 
 Download the latest installer from the [Releases page](https://github.com/jalal-haidar/gitswitch/releases/latest):
 
-| Installer | Use when |
-|---|---|
-| `gitswitch_x.x.x_x64-setup.exe` | Typical end-user install |
+| Installer                       | Use when                       |
+| ------------------------------- | ------------------------------ |
+| `gitswitch_x.x.x_x64-setup.exe` | Typical end-user install       |
 | `gitswitch_x.x.x_x64_en-US.msi` | Enterprise / silent deployment |
 
 > **Note:** Installers are currently unsigned. Windows SmartScreen may show a warning — click **More info → Run anyway**. A code-signing certificate is on the roadmap.
@@ -70,13 +70,13 @@ Start-Process msiexec -Wait -ArgumentList '/x', '"<path>\gitswitch_x.x.x_x64_en-
 
 ## 🛠️ Tech Stack
 
-| Layer | Technology |
-|---|---|
+| Layer           | Technology                   |
+| --------------- | ---------------------------- |
 | Desktop runtime | [Tauri 2](https://tauri.app) |
-| Backend | Rust |
-| Frontend | React 19 + TypeScript + Vite |
-| State | Zustand |
-| Styling | Vanilla CSS (glassmorphism) |
+| Backend         | Rust                         |
+| Frontend        | React 19 + TypeScript + Vite |
+| State           | Zustand                      |
+| Styling         | Vanilla CSS (glassmorphism)  |
 
 ---
 

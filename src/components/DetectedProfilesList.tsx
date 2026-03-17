@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { CheckCircle } from "lucide-react";
 import { useProfileStore, GitProfile } from "../stores/useProfileStore";
 import { invoke } from "@tauri-apps/api/core";
 import { useToast } from "./ui/useToast";
@@ -10,6 +11,7 @@ export const DetectedProfilesList: React.FC = () => {
   const detectError = useProfileStore((s) => s.detectError);
   const addProfile = useProfileStore((s) => s.addProfile);
   const findExistingProfile = useProfileStore((s) => s.findExistingProfile);
+  const profiles = useProfileStore((s) => s.profiles);
 
   const [importingId, setImportingId] = useState<string | null>(null);
   const toast = useToast();
@@ -124,35 +126,56 @@ export const DetectedProfilesList: React.FC = () => {
         <div className="empty-state">No identities detected.</div>
       ) : (
         <div className="profile-list">
-          {detectedProfiles.map((p) => (
-            <div key={p.id} className="detected-item">
-              <div className="detected-main">
-                <strong>{p.label}</strong>
-                <div className="muted">
-                  {p.name} {p.email ? `<${p.email}>` : ""}
+          {detectedProfiles.map((p) => {
+            const existing = findExistingProfile(p.name, p.email);
+            const isImporting = importingId === p.id;
+            return (
+              <div
+                key={p.id}
+                className={`detected-item${existing ? " detected-item--exists" : ""}`}
+              >
+                <div className="detected-main">
+                  <div className="detected-label-row">
+                    <strong>{p.label}</strong>
+                    {existing && (
+                      <span className="exists-badge">
+                        <CheckCircle size={11} />
+                        Already in profiles
+                      </span>
+                    )}
+                  </div>
+                  <div className="muted">
+                    {p.name} {p.email ? `<${p.email}>` : ""}
+                  </div>
+                  {p.sshKeyPath && (
+                    <div className="muted">SSH: {p.sshKeyPath}</div>
+                  )}
                 </div>
-                {p.sshKeyPath && (
-                  <div className="muted">SSH: {p.sshKeyPath}</div>
-                )}
+                <div className="detected-actions">
+                  {!existing && (
+                    <button
+                      className="btn btn-secondary"
+                      onClick={() => handleImport(p)}
+                      disabled={!!importingId || detectLoading}
+                    >
+                      {isImporting ? "Importing…" : "Import"}
+                    </button>
+                  )}
+                  <button
+                    className="btn btn-primary"
+                    onClick={() => handleImportAndActivate(p)}
+                    disabled={!!importingId || detectLoading}
+                  >
+                    {isImporting
+                      ? "Applying…"
+                      : existing
+                        ? "Set Active"
+                        : "Import + Set Active"}
+                  </button>
+                </div>
               </div>
-              <div className="detected-actions">
-                <button
-                  className="btn btn-secondary"
-                  onClick={() => handleImport(p)}
-                  disabled={!!importingId || detectLoading}
-                >
-                  {importingId === p.id ? "Importing…" : "Import"}
-                </button>
-                <button
-                  className="btn btn-primary"
-                  onClick={() => handleImportAndActivate(p)}
-                  disabled={!!importingId || detectLoading}
-                >
-                  {importingId === p.id ? "Importing…" : "Import + Set Active"}
-                </button>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

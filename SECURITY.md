@@ -2,10 +2,10 @@
 
 ## Supported Versions
 
-| Version | Supported |
-|---|---|
-| Latest release | ✅ |
-| Older releases | ❌ |
+| Version        | Supported |
+| -------------- | --------- |
+| Latest release | ✅        |
+| Older releases | ❌        |
 
 We only support the latest released version. Please upgrade before reporting a security issue.
 
@@ -16,6 +16,7 @@ We only support the latest released version. Please upgrade before reporting a s
 Please report security issues by emailing the maintainer directly or using [GitHub's private vulnerability reporting](https://github.com/jalal-haidar/gitswitch/security/advisories/new).
 
 Include:
+
 - A description of the vulnerability
 - Steps to reproduce
 - Potential impact

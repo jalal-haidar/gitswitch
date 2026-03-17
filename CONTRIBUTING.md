@@ -43,11 +43,11 @@ Be respectful and constructive. We welcome contributors of all skill levels.
 
 ### Prerequisites
 
-| Tool | Version |
-|---|---|
-| Node.js | ≥ 18 |
-| Rust | stable (via [rustup](https://rustup.rs)) |
-| Tauri CLI | v2 (`npm run tauri`) |
+| Tool      | Version                                  |
+| --------- | ---------------------------------------- |
+| Node.js   | ≥ 18                                     |
+| Rust      | stable (via [rustup](https://rustup.rs)) |
+| Tauri CLI | v2 (`npm run tauri`)                     |
 
 ### Install & run
 
@@ -119,6 +119,7 @@ docs: update contributing guide
 ## Reporting Bugs
 
 Use the [Bug Report template](.github/ISSUE_TEMPLATE/bug_report.md) and include:
+
 - GitSwitch version
 - OS and version
 - Steps to reproduce
@@ -130,6 +131,7 @@ Use the [Bug Report template](.github/ISSUE_TEMPLATE/bug_report.md) and include:
 ## Requesting Features
 
 Use the [Feature Request template](.github/ISSUE_TEMPLATE/feature_request.md) and describe:
+
 - The problem you're solving
 - Your proposed solution
 - Any alternatives you've considered
