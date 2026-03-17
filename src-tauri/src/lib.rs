@@ -11,6 +11,10 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            Some(vec!["--minimized"]),
+        ))
         .setup(|app| {
             auto_switch::start_auto_switch_watcher(app.handle().clone());
             tray::setup_tray(app)?;
@@ -33,6 +37,8 @@ pub fn run() {
             commands::rules::get_auto_switch_enabled,
             commands::rules::get_store_sensitive_in_keyring,
             commands::rules::set_store_sensitive_in_keyring,
+            commands::rules::get_start_with_system,
+            commands::rules::set_start_with_system,
             commands::rules::set_auto_switch_enabled,
             commands::rules::get_last_auto_switch_event,
             commands::rules::get_directory_rules,

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { X, Shield, RefreshCw, Download, Upload } from "lucide-react";
+import { X, Shield, RefreshCw, Download, Upload, Power } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import {
   save as saveDialog,
@@ -9,7 +9,9 @@ import { check } from "@tauri-apps/plugin-updater";
 
 export const Settings: React.FC<{ onClose: () => void }> = ({ onClose }) => {
   const [storeSensitive, setStoreSensitive] = useState(false);
+  const [startWithSystem, setStartWithSystem] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [autostartLoading, setAutostartLoading] = useState(false);
   const [updateLoading, setUpdateLoading] = useState(false);
   const [updateMessage, setUpdateMessage] = useState<string>("");
   const [exportMsg, setExportMsg] = useState("");
@@ -27,6 +29,11 @@ export const Settings: React.FC<{ onClose: () => void }> = ({ onClose }) => {
       .finally(() => {
         /* no-op */
       });
+    invoke<boolean>("get_start_with_system")
+      .then((v: boolean) => {
+        if (mounted) setStartWithSystem(v);
+      })
+      .catch(() => {});
     return () => {
       mounted = false;
     };
@@ -41,6 +48,18 @@ export const Settings: React.FC<{ onClose: () => void }> = ({ onClose }) => {
       // ignore
     } finally {
       setLoading(false);
+    }
+  };
+
+  const toggleAutostart = async (enabled: boolean) => {
+    setAutostartLoading(true);
+    try {
+      await invoke<boolean>("set_start_with_system", { enabled });
+      setStartWithSystem(enabled);
+    } catch (e) {
+      console.error("Failed to toggle autostart:", e);
+    } finally {
+      setAutostartLoading(false);
     }
   };
 
@@ -155,6 +174,28 @@ export const Settings: React.FC<{ onClose: () => void }> = ({ onClose }) => {
           <p className="muted settings-hint">
             Moves sensitive paths out of profiles.json into the OS credential
             store. Toggling migrates all existing profiles immediately.
+          </p>
+        </div>
+
+        <div className="settings-divider" />
+
+        <div className="settings-section">
+          <div className="settings-section-title">
+            <Power size={14} />
+            Startup
+          </div>
+          <label className="checkbox-row" htmlFor="start-with-system">
+            <input
+              id="start-with-system"
+              type="checkbox"
+              checked={startWithSystem}
+              disabled={autostartLoading}
+              onChange={(e) => toggleAutostart(e.currentTarget.checked)}
+            />
+            <span>Launch at system startup</span>
+          </label>
+          <p className="muted settings-hint">
+            App will start automatically when you log in to your computer.
           </p>
         </div>
 

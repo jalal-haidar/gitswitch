@@ -1,4 +1,5 @@
 use tauri::AppHandle;
+use tauri_plugin_autostart::ManagerExt;
 use uuid::Uuid;
 
 use crate::auto_switch;
@@ -23,6 +24,29 @@ pub fn set_store_sensitive_in_keyring(app: AppHandle, enabled: bool) -> Result<b
     config.settings.store_sensitive_in_keyring = enabled;
     store::save_config(&app, &config).map_err(|e| e.to_string())?;
     Ok(config.settings.store_sensitive_in_keyring)
+}
+
+#[tauri::command]
+pub fn get_start_with_system(app: AppHandle) -> Result<bool, String> {
+    let config = store::load_config(&app).map_err(|e| e.to_string())?;
+    Ok(config.settings.start_with_system)
+}
+
+#[tauri::command]
+pub fn set_start_with_system(app: AppHandle, enabled: bool) -> Result<bool, String> {
+    let mut config = store::load_config(&app).map_err(|e| e.to_string())?;
+    config.settings.start_with_system = enabled;
+    store::save_config(&app, &config).map_err(|e| e.to_string())?;
+    
+    // Enable/disable OS autostart
+    let manager = app.autolaunch();
+    if enabled {
+        manager.enable().map_err(|e| format!("Failed to enable autostart: {}", e))?;
+    } else {
+        manager.disable().map_err(|e| format!("Failed to disable autostart: {}", e))?;
+    }
+    
+    Ok(config.settings.start_with_system)
 }
 
 #[tauri::command]
