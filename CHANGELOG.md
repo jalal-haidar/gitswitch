@@ -3,6 +3,28 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.2.1] - 2026-03-17
+
+### Added
+
+- Export/Import profiles as JSON for easy backup and restore across machines.
+- Profile search/filter box with real-time search across label, name, and email fields.
+- Run at startup toggle in Settings for automatic app launch at system login.
+- Per-profile colored tray icon that dynamically changes to match the active profile's color.
+- Keyboard shortcuts:
+  - `Esc` — Close editor, cancel profile editing, or close settings modal
+  - `Ctrl/Cmd+N` — Open new profile form
+  - `Ctrl/Cmd+F` — Focus search box
+  - `Ctrl/Cmd+,` — Open settings modal
+- Profile count badge in dashboard header.
+- Active profile name now shown in window title.
+
+### Changed
+
+- System tray icon now displays a colored dot matching the active profile's color.
+- App now hides to system tray when closed (instead of exiting). Use "Quit" from tray menu to exit completely.
+- Form editor now uses stable key props to prevent unwanted resets while typing.
+
 ## [0.2.0] - 2026-03-17
 
 ### Changed
