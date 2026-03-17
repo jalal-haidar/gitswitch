@@ -15,6 +15,38 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Validate tag/version consistency
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          if (-not $tag.StartsWith("v")) {
+            throw "Tag must start with 'v' (received: $tag)"
+          }
+
+          $expected = $tag.Substring(1)
+          $pkg = (Get-Content "package.json" -Raw | ConvertFrom-Json).version
+          $cargoLine = (Get-Content "src-tauri/Cargo.toml" | Where-Object { $_ -match '^version\s*=\s*"' } | Select-Object -First 1)
+          $cargo = ($cargoLine -replace '^version\s*=\s*"([^"]+)".*$','$1')
+          $tauri = (Get-Content "src-tauri/tauri.conf.json" -Raw | ConvertFrom-Json).version
+
+          Write-Host "Tag version:   $expected"
+          Write-Host "package.json:  $pkg"
+          Write-Host "Cargo.toml:    $cargo"
+          Write-Host "tauri.conf:    $tauri"
+
+          if ($pkg -ne $expected -or $cargo -ne $expected -or $tauri -ne $expected) {
+            throw "Version mismatch. Ensure tag, package.json, Cargo.toml and tauri.conf.json all use $expected"
+          }
+
+      - name: Validate updater public key configured
+        shell: pwsh
+        run: |
+          $conf = Get-Content "src-tauri/tauri.conf.json" -Raw | ConvertFrom-Json
+          $pubkey = $conf.plugins.updater.pubkey
+          if ([string]::IsNullOrWhiteSpace($pubkey) -or $pubkey -like "REPLACE_WITH_*") {
+            throw "Updater public key is not configured in src-tauri/tauri.conf.json"
+          }
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
@@ -44,3 +76,29 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+
+      - name: Verify updater artifacts are generated
+        shell: pwsh
+        run: |
+          $bundleRoot = "src-tauri/target/release/bundle"
+          $sigFiles = Get-ChildItem -Path $bundleRoot -Recurse -File -Filter *.sig -ErrorAction SilentlyContinue
+          $latest = Get-ChildItem -Path $bundleRoot -Recurse -File -Filter latest.json -ErrorAction SilentlyContinue
+
+          Write-Host "Found signature files:" ($sigFiles.Count)
+          if ($sigFiles.Count -gt 0) { $sigFiles | ForEach-Object { Write-Host " - $($_.FullName)" } }
+
+          if (-not $latest) {
+            throw "latest.json not found. Updater metadata was not generated. Check signing secrets and updater config."
+          }
+
+          Write-Host "Found latest.json:" $latest.FullName
+
+      - name: Upload updater metadata/signatures
+        uses: ncipollo/release-action@v1
+        with:
+          allowUpdates: true
+          replacesArtifacts: false
+          tag: ${{ github.ref_name }}
+          artifacts: |
+            src-tauri/target/release/bundle/**/latest.json
+            src-tauri/target/release/bundle/**/*.sig
