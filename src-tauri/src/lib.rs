@@ -3,6 +3,7 @@ mod config;
 mod models;
 mod errors;
 mod auto_switch;
+mod tray;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -12,6 +13,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             auto_switch::start_auto_switch_watcher(app.handle().clone());
+            tray::setup_tray(app)?;
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

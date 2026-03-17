@@ -53,6 +53,19 @@ export const Dashboard: React.FC = () => {
     toastRef.current = toast;
   }, [toast]);
 
+  // Refresh profiles when a tray switch happens ("profiles-changed" from Rust)
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    const setup = async () => {
+      const { listen } = await import("@tauri-apps/api/event");
+      unlisten = await listen("profiles-changed", () => {
+        void useProfileStore.getState().fetchProfiles();
+      });
+    };
+    setup();
+    return () => { unlisten?.(); };
+  }, []);
+
   useEffect(() => {
     let unlisten: (() => void) | undefined;
     const setup = async () => {

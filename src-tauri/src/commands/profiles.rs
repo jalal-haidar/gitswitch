@@ -103,7 +103,7 @@ pub fn add_profile(app: AppHandle, mut profile: GitProfile) -> Result<GitProfile
     
     config.profiles.push(profile.clone());
     store::save_config(&app, &config).map_err(|e| e.to_string())?;
-    
+    crate::tray::refresh_tray(&app);
     Ok(profile)
 }
 
@@ -143,7 +143,7 @@ pub fn update_profile(app: AppHandle, profile: GitProfile) -> Result<GitProfile,
     }
     
     store::save_config(&app, &config).map_err(|e| e.to_string())?;
-    
+    crate::tray::refresh_tray(&app);
     Ok(profile)
 }
 
@@ -172,7 +172,7 @@ pub fn delete_profile(app: AppHandle, id: String) -> Result<(), String> {
     }
     
     store::save_config(&app, &config).map_err(|e| e.to_string())?;
-    
+    crate::tray::refresh_tray(&app);
     Ok(())
 }
 
@@ -201,7 +201,7 @@ pub fn switch_profile_globally(app: AppHandle, id: String) -> Result<(), String>
 
     config.active_profile_id = Some(id);
     store::save_config(&app, &config).map_err(|e| e.to_string())?;
-    
+    crate::tray::refresh_tray(&app);
     Ok(())
 }
 
@@ -231,7 +231,7 @@ pub fn switch_profile_for_repo(app: AppHandle, id: String, repo_path: &Path) -> 
 
     config.active_profile_id = Some(id);
     store::save_config(&app, &config).map_err(|e| e.to_string())?;
-
+    crate::tray::refresh_tray(&app);
     Ok(())
 }
 
@@ -245,6 +245,7 @@ pub fn set_active_profile(app: AppHandle, id: String) -> Result<(), String> {
     }
     config.active_profile_id = Some(id);
     store::save_config(&app, &config).map_err(|e| e.to_string())?;
+    crate::tray::refresh_tray(&app);
     Ok(())
 }
 
