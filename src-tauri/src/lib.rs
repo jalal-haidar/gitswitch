@@ -38,6 +38,20 @@ pub fn run() {
             commands::rules::update_directory_rule,
             commands::rules::delete_directory_rule,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .on_window_event(|window, event| {
+            // Clicking the X hides the window instead of destroying it.
+            // The app keeps running; use "Quit" in the tray menu to exit.
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                window.hide().unwrap();
+                api.prevent_close();
+            }
+        })
+        .build(tauri::generate_context!())
+        .expect("error while running tauri application")
+        .run(|_app, event| {
+            // Prevent the process from exiting when no windows are visible.
+            if let tauri::RunEvent::ExitRequested { api, .. } = event {
+                api.prevent_exit();
+            }
+        });
 }
