@@ -36,6 +36,7 @@ export const Dashboard: React.FC = () => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const toast = useToast();
 
   useEffect(() => {
@@ -107,6 +108,64 @@ export const Dashboard: React.FC = () => {
       unlisten?.();
     };
   }, []);
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const isMac = navigator.platform.toUpperCase().indexOf("MAC") >= 0;
+      const cmdOrCtrl = isMac ? e.metaKey : e.ctrlKey;
+
+      // Escape - Close editor or settings
+      if (e.key === "Escape") {
+        if (showSettings) {
+          setShowSettings(false);
+          e.preventDefault();
+        } else if (showCreate) {
+          setShowCreate(false);
+          e.preventDefault();
+        } else if (editingId) {
+          setEditingId(null);
+          e.preventDefault();
+        }
+        return;
+      }
+
+      // Cmd/Ctrl+N - New profile (unless in input field or editing)
+      if (cmdOrCtrl && e.key === "n") {
+        const target = e.target as HTMLElement;
+        const isInInput =
+          target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.isContentEditable;
+        if (!isInInput && !showCreate && !editingId) {
+          setShowCreate(true);
+          e.preventDefault();
+        }
+        return;
+      }
+
+      // Cmd/Ctrl+, - Open settings
+      if (cmdOrCtrl && e.key === ",") {
+        setShowSettings(true);
+        e.preventDefault();
+        return;
+      }
+
+      // Cmd/Ctrl+F - Focus search box
+      if (cmdOrCtrl && e.key === "f") {
+        if (profiles.length > 0 && searchInputRef.current) {
+          searchInputRef.current.focus();
+          e.preventDefault();
+        }
+        return;
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [showSettings, showCreate, editingId, profiles.length]);
 
   const duplicateExists = (value: ProfileEditorValue) => {
     const nextName = value.name.trim().toLowerCase();
@@ -242,6 +301,7 @@ export const Dashboard: React.FC = () => {
           <div className="profile-search">
             <Search size={16} className="profile-search-icon" />
             <input
+              ref={searchInputRef}
               type="text"
               placeholder="Search profiles by label, name, or email…"
               value={searchQuery}
