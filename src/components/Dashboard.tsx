@@ -1,6 +1,12 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, useMemo } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { Plus, Users, RefreshCw, Settings as SettingsIcon } from "lucide-react";
+import {
+  Plus,
+  Users,
+  RefreshCw,
+  Settings as SettingsIcon,
+  Search,
+} from "lucide-react";
 import Settings from "./Settings";
 
 import { GitProfile, useProfileStore } from "../stores/useProfileStore";
@@ -29,6 +35,7 @@ export const Dashboard: React.FC = () => {
   const [showCreate, setShowCreate] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
   const toast = useToast();
 
   useEffect(() => {
@@ -111,6 +118,17 @@ export const Dashboard: React.FC = () => {
         profile.email.trim().toLowerCase() === nextEmail,
     );
   };
+
+  const filteredProfiles = useMemo(() => {
+    if (!searchQuery.trim()) return profiles;
+    const query = searchQuery.trim().toLowerCase();
+    return profiles.filter(
+      (p) =>
+        p.label.toLowerCase().includes(query) ||
+        p.name.toLowerCase().includes(query) ||
+        p.email.toLowerCase().includes(query),
+    );
+  }, [profiles, searchQuery]);
 
   const handleCreate = async (value: ProfileEditorValue) => {
     if (duplicateExists(value)) return;
@@ -220,6 +238,19 @@ export const Dashboard: React.FC = () => {
           />
         )}
 
+        {profiles.length > 0 && (
+          <div className="profile-search">
+            <Search size={16} className="profile-search-icon" />
+            <input
+              type="text"
+              placeholder="Search profiles by label, name, or email…"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="profile-search-input"
+            />
+          </div>
+        )}
+
         {loading ? (
           <div className="empty-state">Loading your profiles...</div>
         ) : profiles.length === 0 ? (
@@ -227,9 +258,14 @@ export const Dashboard: React.FC = () => {
             <Users size={48} />
             <p>No profiles found. Create one to get started!</p>
           </div>
+        ) : filteredProfiles.length === 0 ? (
+          <div className="glass-panel empty-state">
+            <Users size={48} />
+            <p>No profiles match your search.</p>
+          </div>
         ) : (
           <div className="profile-list">
-            {profiles.map((profile) => (
+            {filteredProfiles.map((profile) => (
               <React.Fragment key={profile.id}>
                 <ProfileCard
                   profile={profile}

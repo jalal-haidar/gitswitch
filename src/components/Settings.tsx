@@ -1,7 +1,10 @@
 import React, { useEffect, useState } from "react";
 import { X, Shield, RefreshCw, Download, Upload } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
-import { save as saveDialog, open as openDialog } from "@tauri-apps/plugin-dialog";
+import {
+  save as saveDialog,
+  open as openDialog,
+} from "@tauri-apps/plugin-dialog";
 import { check } from "@tauri-apps/plugin-updater";
 
 export const Settings: React.FC<{ onClose: () => void }> = ({ onClose }) => {
@@ -53,7 +56,9 @@ export const Settings: React.FC<{ onClose: () => void }> = ({ onClose }) => {
       await invoke("export_profiles", { path });
       setExportMsg("Profiles exported successfully.");
     } catch (e) {
-      setExportMsg(`Export failed: ${e instanceof Error ? e.message : String(e)}`);
+      setExportMsg(
+        `Export failed: ${e instanceof Error ? e.message : String(e)}`,
+      );
     } finally {
       setExportLoading(false);
     }
@@ -68,10 +73,17 @@ export const Settings: React.FC<{ onClose: () => void }> = ({ onClose }) => {
         filters: [{ name: "JSON", extensions: ["json"] }],
       });
       if (!path) return;
-      const result = await invoke<{ added: number; skipped: number }>("import_profiles", { path });
-      setImportMsg(`Imported ${result.added} profile(s)${result.skipped ? `, skipped ${result.skipped} duplicate(s)` : "."}`);
+      const result = await invoke<{ added: number; skipped: number }>(
+        "import_profiles",
+        { path },
+      );
+      setImportMsg(
+        `Imported ${result.added} profile(s)${result.skipped ? `, skipped ${result.skipped} duplicate(s)` : "."}`,
+      );
     } catch (e) {
-      setImportMsg(`Import failed: ${e instanceof Error ? e.message : String(e)}`);
+      setImportMsg(
+        `Import failed: ${e instanceof Error ? e.message : String(e)}`,
+      );
     } finally {
       setImportLoading(false);
     }
@@ -180,7 +192,8 @@ export const Settings: React.FC<{ onClose: () => void }> = ({ onClose }) => {
               disabled={exportLoading}
               onClick={handleExport}
             >
-              <Download size={14} /> {exportLoading ? "Exporting…" : "Export profiles"}
+              <Download size={14} />{" "}
+              {exportLoading ? "Exporting…" : "Export profiles"}
             </button>
             <button
               className="btn btn-secondary"
@@ -188,7 +201,8 @@ export const Settings: React.FC<{ onClose: () => void }> = ({ onClose }) => {
               disabled={importLoading}
               onClick={handleImport}
             >
-              <Upload size={14} /> {importLoading ? "Importing…" : "Import profiles"}
+              <Upload size={14} />{" "}
+              {importLoading ? "Importing…" : "Import profiles"}
             </button>
           </div>
           {exportMsg && <p className="muted settings-hint">{exportMsg}</p>}
