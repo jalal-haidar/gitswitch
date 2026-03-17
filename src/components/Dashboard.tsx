@@ -28,6 +28,7 @@ export const Dashboard: React.FC = () => {
   const [showCreate, setShowCreate] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
+  const toast = useToast();
 
   useEffect(() => {
     fetchProfiles();
@@ -36,7 +37,9 @@ export const Dashboard: React.FC = () => {
 
   // Keep a ref so the auto-switch listener always has the latest toast without re-subscribing
   const toastRef = useRef(toast);
-  useEffect(() => { toastRef.current = toast; }, [toast]);
+  useEffect(() => {
+    toastRef.current = toast;
+  }, [toast]);
 
   useEffect(() => {
     let unlisten: (() => void) | undefined;
@@ -46,10 +49,15 @@ export const Dashboard: React.FC = () => {
         "auto-switch-triggered",
         (event) => {
           const state = useProfileStore.getState();
-          const profile = state.profiles.find((p) => p.id === event.payload.profile_id);
+          const profile = state.profiles.find(
+            (p) => p.id === event.payload.profile_id,
+          );
           const label = profile?.label ?? event.payload.profile_id;
           // Trim path to last 2 segments for readability
-          const segments = event.payload.path.replace(/\\/g, "/").split("/").filter(Boolean);
+          const segments = event.payload.path
+            .replace(/\\/g, "/")
+            .split("/")
+            .filter(Boolean);
           const shortPath = segments.slice(-2).join("/");
           toastRef.current.show({
             message: `Auto-switched to \"${label}\" (…/${shortPath})`,
@@ -61,10 +69,11 @@ export const Dashboard: React.FC = () => {
       );
     };
     setup();
-    return () => { unlisten?.(); };
+    return () => {
+      unlisten?.();
+    };
   }, []);
 
-  const toast = useToast();
   const duplicateExists = (value: ProfileEditorValue) => {
     const nextName = value.name.trim().toLowerCase();
     const nextEmail = value.email.trim().toLowerCase();
