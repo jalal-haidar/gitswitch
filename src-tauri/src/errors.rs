@@ -7,8 +7,6 @@ pub enum BackendErrorKind {
     PermissionDenied,
     GitFailed,
     IoError,
-    NotFound,
-    Unknown,
 }
 
 #[derive(Debug, Serialize)]

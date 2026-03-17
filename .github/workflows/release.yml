@@ -114,13 +114,3 @@ jobs:
             }
             Write-Host "Sig files present - tauri-action likely handled latest.json upload directly."
           }
-
-      - name: Upload updater metadata/signatures
-        uses: ncipollo/release-action@v1
-        with:
-          allowUpdates: true
-          replacesArtifacts: false
-          tag: ${{ github.ref_name }}
-          artifacts: |
-            src-tauri/target/release/**/latest.json
-            src-tauri/target/release/**/*.sig
