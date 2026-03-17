@@ -1,134 +1,167 @@
-# GitSwitch 🚀
+<div align="center">
 
-**GitSwitch** is a cross-platform desktop application designed to make managing multiple Git identities effortless. No more accidental commits with the wrong email or wrestling with SSH configs.
+<img src="src/assets/logo.png" alt="GitSwitch logo" width="80" height="80" />
 
-[![Release](https://img.shields.io/github/v/release/jalal-haidar/gitswitch)](https://github.com/jalal-haidar/gitswitch/releases/latest) [![Downloads](https://img.shields.io/github/downloads/jalal-haidar/gitswitch/total)](https://github.com/jalal-haidar/gitswitch/releases)
+# GitSwitch
+
+**Manage multiple Git identities from a beautiful desktop app. No more wrong-email commits.**
+
+[![Latest Release](https://img.shields.io/github/v/release/jalal-haidar/gitswitch?style=flat-square&logo=github)](https://github.com/jalal-haidar/gitswitch/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/jalal-haidar/gitswitch/total?style=flat-square)](https://github.com/jalal-haidar/gitswitch/releases)
+[![CI](https://img.shields.io/github/actions/workflow/status/jalal-haidar/gitswitch/ci.yml?branch=main&style=flat-square&label=CI)](https://github.com/jalal-haidar/gitswitch/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
+[![Built with Tauri](https://img.shields.io/badge/built%20with-Tauri%202-purple?style=flat-square&logo=tauri)](https://tauri.app)
+
+[**Download**](https://github.com/jalal-haidar/gitswitch/releases/latest) · [**Report a Bug**](https://github.com/jalal-haidar/gitswitch/issues/new?template=bug_report.yml) · [**Request a Feature**](https://github.com/jalal-haidar/gitswitch/issues/new?template=feature_request.yml) · [**Changelog**](CHANGELOG.md)
+
+</div>
+
+---
+
+## What is GitSwitch?
+
+GitSwitch is a lightweight desktop app built with **Tauri + React** that lets you create named Git profiles (name, email, SSH key, GPG key) and switch between them with a single click — globally or per-directory automatically.
+
+---
 
 ## ✨ Features
 
-- **Profile Management:** Create and manage multiple Git profiles (Name, Email, SSH keys).
-- **One-Click Switch:** Change your global Git identity with a single click.
-- **Tauri-Powered:** Lightweight, fast, and secure desktop experience.
-- **Directory Rules (WIP):** Automatically switch profiles based on the directory you are working in.
+| Feature | Status |
+|---|---|
+| Create & manage multiple Git profiles | ✅ |
+| One-click global identity switch | ✅ |
+| Per-directory auto-switch rules | ✅ |
+| Detect existing identities from git history | ✅ |
+| In-app auto-updater | ✅ |
+| Store SSH/GPG paths in OS keyring | ✅ |
+| System tray integration | 🔜 |
+| macOS / Linux support | 🔜 |
 
-## Recent updates (Mar 16, 2026)
+---
 
-- **Error normalization & UX fixes:** Backend errors are now parsed and normalized so the UI shows friendly messages (no raw JSON blobs).
-- **Active profile persisted:** The app now stores and exposes an `active_profile_id` so the UI accurately reflects the globally active Git identity.
-- **Inline profile editor:** Profiles can be created and edited inline via the new `ProfileEditor` component.
-- **Directory rules CRUD implemented:** Full create/read/update/delete support for directory rules is available (backend commands + frontend UI). Advanced automation (auto-switch watcher, glob generation) is intentionally deferred to a follow-up phase.
+## 📦 Installation
+
+### Windows (recommended)
+
+Download the latest installer from the [Releases page](https://github.com/jalal-haidar/gitswitch/releases/latest):
+
+| Installer | Use when |
+|---|---|
+| `gitswitch_x.x.x_x64-setup.exe` | Typical end-user install |
+| `gitswitch_x.x.x_x64_en-US.msi` | Enterprise / silent deployment |
+
+> **Note:** Installers are currently unsigned. Windows SmartScreen may show a warning — click **More info → Run anyway**. A code-signing certificate is on the roadmap.
+
+#### Silent MSI install
+
+```powershell
+Start-Process msiexec -Wait -ArgumentList '/i', '"<path>\gitswitch_x.x.x_x64_en-US.msi"', '/qn'
+```
+
+#### Uninstall
+
+**Settings → Apps → Apps & features → GitSwitch → Uninstall**, or:
+
+```powershell
+Start-Process msiexec -Wait -ArgumentList '/x', '"<path>\gitswitch_x.x.x_x64_en-US.msi"', '/qn'
+```
+
+---
 
 ## 🛠️ Tech Stack
 
-- **Backend:** Rust + Tauri 2.0
-- **Frontend:** React + TypeScript + Vite
-- **State Management:** Zustand
-- **Styling:** CSS Modules / Vanilla CSS
+| Layer | Technology |
+|---|---|
+| Desktop runtime | [Tauri 2](https://tauri.app) |
+| Backend | Rust |
+| Frontend | React 19 + TypeScript + Vite |
+| State | Zustand |
+| Styling | Vanilla CSS (glassmorphism) |
+
+---
+
+## 🚀 Building from Source
+
+### Prerequisites
+
+- [Node.js](https://nodejs.org) ≥ 18
+- [Rust](https://rustup.rs) (stable)
+
+### Run locally
+
+```bash
+git clone https://github.com/jalal-haidar/gitswitch.git
+cd gitswitch
+npm install
+npm run tauri dev
+```
+
+### Build release binary
+
+```bash
+npm run tauri build
+```
+
+Installers are output to `src-tauri/target/release/bundle/`.
+
+---
+
+## 🧪 Running Tests
+
+```bash
+# Frontend
+npm run test:unit -- --run
+
+# Rust
+cd src-tauri
+cargo test --workspace
+```
+
+---
 
 ## 📂 Project Structure
 
-- `src-tauri/`: Rust backend, handling system-level Git configuration and persistence.
-- `src/`: React frontend, providing a premium UI for identity management.
-- `docs/`: Technical documentation and architecture overviews.
+```
+src/                        React frontend
+  components/               UI components (Dashboard, ProfileCard, etc.)
+  stores/                   Zustand state
+  styles/                   Global CSS
+src-tauri/
+  src/                      Rust backend
+    commands/               Tauri commands (profiles, rules, detect)
+    config/                 Persistence layer
+    models.rs               Shared data models
+  tauri.conf.json           App + updater configuration
+.github/
+  workflows/
+    ci.yml                  Lint + test on every push
+    release.yml             Build & publish GitHub releases
+docs/                       Architecture and setup docs
+```
 
-## 🔄 In-App Updates
+---
 
-The app is configured for Tauri updater-based releases.
+## 🔄 Auto-Updates
 
-- Release workflow: `.github/workflows/release.yml`
-- App updater config: `src-tauri/tauri.conf.json` (`plugins.updater`)
-- Setup guide: `docs/UPDATER_SETUP.md`
+GitSwitch ships with Tauri's built-in updater. When a new release is published, the app notifies users and installs the update automatically.
 
-Important: set `plugins.updater.pubkey` in `src-tauri/tauri.conf.json` to your real signer public key before publishing updates.
+- Updater endpoint: `https://github.com/jalal-haidar/gitswitch/releases/latest/download/latest.json`
+- All update artifacts are signed with a Minisign key.
+- See [docs/UPDATER_SETUP.md](docs/UPDATER_SETUP.md) for details.
 
-## 🚀 Getting Started
+---
 
-1.  **Install Dependencies:**
-    ```bash
-    npm install
-    ```
-2.  **Run in Development:**
-    ```bash
-    npm run tauri dev
-    ```
-3.  **Build for Production:**
-    ```bash
-    npm run tauri build
-    ```
+## 🤝 Contributing
 
-## 🏗️ Implementation Status
+Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for setup instructions, commit style, and the PR process.
 
-- [x] Backend Persistence (JSON Storage)
-- [x] Rust Models & Commands
-- [x] Frontend Store (Zustand)
-- [/] UI Components (Current Focus)
-- [ ] SSH Key Management
-- [ ] System Tray Integration
+1. Fork the repo
+2. Create a feature branch: `git checkout -b feat/my-feature`
+3. Commit your changes following [Conventional Commits](https://www.conventionalcommits.org/)
+4. Open a Pull Request
 
-## 📦 Releases
+---
 
-Binaries, installers, checksums, and a portable ZIP for the latest release are published on the GitHub Releases page.
+## 📄 License
 
-- **Latest release:** v0.1.0
-- Download (Windows EXE): https://github.com/jalal-haidar/gitswitch/releases/download/v0.1.0/gitswitch_0.1.0_x64-setup.exe
-- Download (Windows MSI): https://github.com/jalal-haidar/gitswitch/releases/download/v0.1.0/gitswitch_0.1.0_x64_en-US.msi
-- Portable ZIP (contains installers + checksums): https://github.com/jalal-haidar/gitswitch/releases/download/v0.1.0/gitswitch_0.1.0.zip
-- SHA256 checksums:
-  - https://github.com/jalal-haidar/gitswitch/releases/download/v0.1.0/gitswitch_0.1.0_x64-setup.exe.sha256
-  - https://github.com/jalal-haidar/gitswitch/releases/download/v0.1.0/gitswitch_0.1.0_x64_en-US.msi.sha256
-
-Verification
-
-- PowerShell (Windows):
-  ```powershell
-  Get-FileHash -Algorithm SHA256 <path-to-file>
-  ```
-- macOS / Linux:
-  ```bash
-  shasum -a 256 <file>
-  ```
-
-Signing
-
-- These installers may be unsigned. Signing verifies publisher identity and reduces SmartScreen/AV warnings.
-- To provide signed installers, obtain a code-signing certificate and sign in CI or locally (e.g., `signtool.exe` on Windows). If you want, I can help add signing to the CI workflow once you have a certificate.
-
-Visit the releases page for archives and older artifacts:
-
-https://github.com/jalal-haidar/gitswitch/releases
-
-## 🪟 Windows Installation
-
-Choose one of the installers from the releases page and follow these steps.
-
-- GUI Installer (recommended): double-click the `gitswitch_0.1.0_x64-setup.exe` and follow the installer prompts.
-- MSI Installer (silent install): open an elevated PowerShell and run:
-  ```powershell
-  Start-Process msiexec -Wait -ArgumentList '/i','"<path-to>\\gitswitch_0.1.0_x64_en-US.msi"','/qn'
-  ```
-- Verify checksum (PowerShell):
-  ```powershell
-  Get-FileHash -Algorithm SHA256 <path-to-file>
-  ```
-- Verify signature (if signed):
-  ```powershell
-  signtool verify /pa <path-to-file>
-  ```
-
-Notes:
-
-- Installing may require administrator privileges.
-- If installers are unsigned, Windows SmartScreen may warn; signed installers reduce such warnings.
-
-## ❌ Uninstalling GitSwitch (Windows)
-
-Remove GitSwitch using the GUI or silently for automated workflows.
-
-- GUI (recommended): open **Settings → Apps → Apps & features**, find "GitSwitch", and choose **Uninstall**. You can also use Control Panel → Programs and Features.
-- MSI silent uninstall (admin):
-  ```powershell
-  Start-Process msiexec -Wait -ArgumentList '/x','"<path-to>\\gitswitch_0.1.0_x64_en-US.msi"','/qn'
-  ```
-- EXE installer uninstall: run the uninstaller from the Start Menu or the installation directory (for example `C:\Program Files\GitSwitch\uninstall.exe`) if present.
-
-To fully remove user data, delete the application's data directory (check app settings or docs for the exact path). Be careful: this will remove saved profiles and settings.
+[MIT](LICENSE) © 2026 [Jalal Haidar](https://github.com/jalal-haidar)
