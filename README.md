@@ -26,16 +26,27 @@ GitSwitch is a lightweight desktop app built with **Tauri + React** that lets yo
 
 ## ✨ Features
 
-| Feature                                     | Status |
-| ------------------------------------------- | ------ |
-| Create & manage multiple Git profiles       | ✅     |
-| One-click global identity switch            | ✅     |
-| Per-directory auto-switch rules             | ✅     |
-| Detect existing identities from git history | ✅     |
-| In-app auto-updater                         | ✅     |
-| Store SSH/GPG paths in OS keyring           | ✅     |
-| System tray integration                     | 🔜     |
-| macOS / Linux support                       | 🔜     |
+| Feature                                              | Status |
+| ---------------------------------------------------- | ------ |
+| Create & manage multiple Git profiles                | ✅     |
+| One-click global identity switch                     | ✅     |
+| Per-directory auto-switch rules                      | ✅     |
+| Detect existing identities from git config           | ✅     |
+| Multi-repo scanner (bulk identity discovery & apply) | ✅     |
+| Duplicate profile                                    | ✅     |
+| Apply profile to any specific repo (manual)          | ✅     |
+| SSH key support with per-repo `core.sshCommand`      | ✅     |
+| GPG signing key support                              | ✅     |
+| Light / Dark / System theme                          | ✅     |
+| System tray with colored active-profile icon         | ✅     |
+| Close-to-tray (app keeps running in background)      | ✅     |
+| Launch at system startup                             | ✅     |
+| In-app auto-updater                                  | ✅     |
+| Store SSH/GPG paths in OS keyring                    | ✅     |
+| Export / import profiles as JSON                     | ✅     |
+| Profile search / filter                              | ✅     |
+| Keyboard shortcuts                                   | ✅     |
+| macOS / Linux support                                | 🔜     |
 
 ---
 

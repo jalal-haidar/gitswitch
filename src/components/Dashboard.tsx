@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState, useMemo } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { getVersion } from "@tauri-apps/api/app";
 import {
   Plus,
   Users,
@@ -52,6 +53,13 @@ export const Dashboard: React.FC = () => {
   const [scanLoading, setScanLoading] = useState(false);
   const [applyTargets, setApplyTargets] = useState<Record<string, string>>({});
   const [applyingPath, setApplyingPath] = useState<string | null>(null);
+  const [appVersion, setAppVersion] = useState<string>("");
+
+  useEffect(() => {
+    getVersion()
+      .then(setAppVersion)
+      .catch(() => setAppVersion("0.2.2"));
+  }, []);
 
   useEffect(() => {
     fetchProfiles();
@@ -600,6 +608,11 @@ export const Dashboard: React.FC = () => {
 
         <DirectoryRulesSection />
       </section>
+
+      <footer className="app-footer">
+        <span className="muted">GitSwitch v{appVersion}</span>
+      </footer>
+
       {showSettings && <Settings onClose={() => setShowSettings(false)} />}
     </div>
   );

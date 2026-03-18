@@ -3,6 +3,32 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.2.2] - 2026-03-18
+
+### Added
+
+- **Multi-repo scanner**: pick a root folder to discover all git repos inside it recursively; displays detected name/email, matched profile badge, and remote service (GitHub/GitLab/Bitbucket) per repo with a one-click Apply button.
+- **Duplicate Profile**: copy any profile to a new one pre-filled with the same details via the "Duplicate" button on each profile card.
+- **Apply to Repo**: manually apply a profile to a specific repository folder without waiting for an auto-switch event, via the "Apply to Repo" button on each profile card.
+- **Light / Dark / System theme**: theme selector in Settings with full CSS variable implementation; persisted to config; applied on startup.
+- **Per-rule last-triggered timestamp**: each directory rule card now shows the last time it auto-switched, stamped in Rust after every successful auto-switch.
+- **Remote URL service badge**: profile cards and scanned repo rows show GitHub / GitLab / Bitbucket / Other badge derived from `remote.origin.url`.
+- **Remote URL detection**: `detect_identities` now also captures `remote.origin.url` and classifies the hosting service.
+- **Version display**: current app version shown in the Dashboard footer.
+
+### Changed
+
+- Page title corrected from Tauri template default to **GitSwitch**.
+- SSH key paths are now restricted to the user home directory (path traversal hardening).
+- Leading `~` in SSH key paths is now expanded to the home directory.
+- Export `version = 0` is now rejected on import (previously only `version > 1` was checked).
+- Auto-switch watcher thread now emits an `auto-switch-error` event when it dies; the frontend shows a persistent error toast.
+- OS keyring write failures now emit a `keyring-warning` event instead of being silently discarded; the frontend shows a warning toast.
+
+### Fixed
+
+- Rule path existence is preserved correctly when updating a directory rule (was being clobbered).
+
 ## [0.2.1] - 2026-03-17
 
 ### Added
