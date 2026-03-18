@@ -184,22 +184,28 @@ export const Settings: React.FC<{ onClose: () => void }> = ({ onClose }) => {
 
         <div className="settings-section">
           <div className="settings-section-title">
-            <Shield size={14} />
-            Security
+            <Sun size={14} />
+            Theme
           </div>
-          <label className="checkbox-row" htmlFor="store-sensitive">
-            <input
-              id="store-sensitive"
-              type="checkbox"
-              checked={storeSensitive}
-              disabled={loading}
-              onChange={(e) => toggle(e.currentTarget.checked)}
-            />
-            <span>Store SSH/GPG paths in OS keyring</span>
-          </label>
+          <div
+            className="theme-selector"
+            role="group"
+            aria-label="Theme selection"
+          >
+            {(["system", "light", "dark"] as const).map((t) => (
+              <button
+                key={t}
+                type="button"
+                className={`btn ${theme === t ? "btn-primary" : "btn-secondary"} theme-btn`}
+                onClick={() => handleThemeChange(t)}
+                aria-pressed={theme === t}
+              >
+                {t.charAt(0).toUpperCase() + t.slice(1)}
+              </button>
+            ))}
+          </div>
           <p className="muted settings-hint">
-            Moves sensitive paths out of profiles.json into the OS credential
-            store. Toggling migrates all existing profiles immediately.
+            System follows your OS dark/light preference.
           </p>
         </div>
 
@@ -229,28 +235,22 @@ export const Settings: React.FC<{ onClose: () => void }> = ({ onClose }) => {
 
         <div className="settings-section">
           <div className="settings-section-title">
-            <Sun size={14} />
-            Theme
+            <Shield size={14} />
+            Security
           </div>
-          <div
-            className="theme-selector"
-            role="group"
-            aria-label="Theme selection"
-          >
-            {(["system", "light", "dark"] as const).map((t) => (
-              <button
-                key={t}
-                type="button"
-                className={`btn ${theme === t ? "btn-primary" : "btn-secondary"} theme-btn`}
-                onClick={() => handleThemeChange(t)}
-                aria-pressed={theme === t}
-              >
-                {t.charAt(0).toUpperCase() + t.slice(1)}
-              </button>
-            ))}
-          </div>
+          <label className="checkbox-row" htmlFor="store-sensitive">
+            <input
+              id="store-sensitive"
+              type="checkbox"
+              checked={storeSensitive}
+              disabled={loading}
+              onChange={(e) => toggle(e.currentTarget.checked)}
+            />
+            <span>Store SSH/GPG paths in OS keyring</span>
+          </label>
           <p className="muted settings-hint">
-            System follows your OS dark/light preference.
+            Moves sensitive paths out of profiles.json into the OS credential
+            store. Toggling migrates all existing profiles immediately.
           </p>
         </div>
 

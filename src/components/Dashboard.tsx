@@ -28,6 +28,8 @@ import ProfileEditor, {
 } from "./ProfileEditor";
 import DirectoryRulesSection from "./DirectoryRules";
 
+const SCAN_PAGE_SIZE = 20;
+
 export const Dashboard: React.FC = () => {
   const {
     profiles,
@@ -48,12 +50,19 @@ export const Dashboard: React.FC = () => {
   const searchInputRef = useRef<HTMLInputElement>(null);
   const toast = useToast();
 
+  // Detected identities shown only after user clicks Detect
+  const [showDetected, setShowDetected] = useState(false);
+
   // Repo scanner state
   const [scannedRepos, setScannedRepos] = useState<ScannedRepo[]>([]);
   const [scanLoading, setScanLoading] = useState(false);
   const [applyTargets, setApplyTargets] = useState<Record<string, string>>({});
   const [applyingPath, setApplyingPath] = useState<string | null>(null);
   const [appVersion, setAppVersion] = useState<string>("");
+
+  // Scanner search + pagination
+  const [scanSearch, setScanSearch] = useState("");
+  const [scanPage, setScanPage] = useState(0);
 
   useEffect(() => {
     getVersion()
@@ -249,6 +258,24 @@ export const Dashboard: React.FC = () => {
     );
   }, [profiles, searchQuery]);
 
+  const filteredScanRepos = useMemo(() => {
+    if (!scanSearch.trim()) return scannedRepos;
+    const q = scanSearch.trim().toLowerCase();
+    return scannedRepos.filter(
+      (r) =>
+        r.name.toLowerCase().includes(q) ||
+        r.path.toLowerCase().includes(q) ||
+        (r.userName ?? "").toLowerCase().includes(q) ||
+        (r.userEmail ?? "").toLowerCase().includes(q),
+    );
+  }, [scannedRepos, scanSearch]);
+
+  const scanTotalPages = Math.max(1, Math.ceil(filteredScanRepos.length / SCAN_PAGE_SIZE));
+  const pagedScanRepos = useMemo(
+    () => filteredScanRepos.slice(scanPage * SCAN_PAGE_SIZE, (scanPage + 1) * SCAN_PAGE_SIZE),
+    [filteredScanRepos, scanPage],
+  );
+
   const handleCreate = async (value: ProfileEditorValue) => {
     if (duplicateExists(value)) return;
     try {
@@ -314,6 +341,8 @@ export const Dashboard: React.FC = () => {
     try {
       const results = await scanRepos(root as string);
       setScannedRepos(results);
+      setScanSearch("");
+      setScanPage(0);
       // Pre-select matched profile (or first profile) for each row
       const targets: Record<string, string> = {};
       for (const r of results) {
@@ -380,7 +409,10 @@ export const Dashboard: React.FC = () => {
             </button>
             <button
               className="btn btn-ghost detect-btn"
-              onClick={handleDetectClick}
+              onClick={() => {
+                setShowDetected(true);
+                handleDetectClick();
+              }}
               title="Detect identities"
               disabled={detectLoading}
             >
@@ -518,11 +550,17 @@ export const Dashboard: React.FC = () => {
           </div>
         )}
 
-        <section className="detected-section">
-          <DetectedProfilesList />
-        </section>
+        {showDetected && (
+          <>
+            <hr className="section-divider" />
+            <section className="detected-section">
+              <DetectedProfilesList />
+            </section>
+          </>
+        )}
 
         {/* ── Repo Scanner ─────────────────────────────────────────────── */}
+        <hr className="section-divider" />
         <section className="scan-section" aria-labelledby="scan-heading">
           <div className="section-header">
             <h2 id="scan-heading">Repo Scanner</h2>
@@ -558,9 +596,22 @@ export const Dashboard: React.FC = () => {
 
           {scannedRepos.length > 0 && (
             <div className="glass-panel scan-results">
-              <div className="scan-count muted">
-                {scannedRepos.length} repo{scannedRepos.length !== 1 ? "s" : ""}{" "}
-                found
+              <div className="scan-results-toolbar">
+                <div className="scan-count muted">
+                  {filteredScanRepos.length !== scannedRepos.length
+                    ? `${filteredScanRepos.length} of ${scannedRepos.length} repos`
+                    : `${scannedRepos.length} repo${scannedRepos.length !== 1 ? "s" : ""} found`}
+                </div>
+                <div className="scan-search-wrap">
+                  <Search size={14} className="scan-search-icon" />
+                  <input
+                    type="text"
+                    className="scan-search-input"
+                    placeholder="Filter by name, path, or identity…"
+                    value={scanSearch}
+                    onChange={(e) => { setScanSearch(e.target.value); setScanPage(0); }}
+                  />
+                </div>
               </div>
               <div
                 className="scan-table"
@@ -572,7 +623,7 @@ export const Dashboard: React.FC = () => {
                   <span>Detected Identity</span>
                   <span>Apply Profile</span>
                 </div>
-                {scannedRepos.map((repo) => {
+                {pagedScanRepos.map((repo) => {
                   const matchedProfile = profiles.find(
                     (p) => p.id === repo.matchedProfileId,
                   );
@@ -658,10 +709,32 @@ export const Dashboard: React.FC = () => {
                   );
                 })}
               </div>
+              {scanTotalPages > 1 && (
+                <div className="scan-pagination">
+                  <button
+                    className="btn btn-secondary btn-sm"
+                    disabled={scanPage === 0}
+                    onClick={() => setScanPage((p) => Math.max(0, p - 1))}
+                  >
+                    ‹ Prev
+                  </button>
+                  <span className="muted scan-page-info">
+                    Page {scanPage + 1} / {scanTotalPages}
+                  </span>
+                  <button
+                    className="btn btn-secondary btn-sm"
+                    disabled={scanPage >= scanTotalPages - 1}
+                    onClick={() => setScanPage((p) => Math.min(scanTotalPages - 1, p + 1))}
+                  >
+                    Next ›
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </section>
 
+        <hr className="section-divider" />
         <DirectoryRulesSection />
       </section>
 

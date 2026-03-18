@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Pencil, Plus, Trash2, FolderOpen } from "lucide-react";
 import { open as openFolderPicker } from "@tauri-apps/plugin-dialog";
 import { normalizeBackendError } from "../utils/error";
@@ -39,6 +39,12 @@ const RuleEditor: React.FC<{
   const [touchedProfile, setTouchedProfile] = useState(false);
   const [submitted, setSubmitted] = useState(false);
 
+  const pathInputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    // Auto-focus path input when editor mounts
+    pathInputRef.current?.focus();
+  }, []);
+
   const pathOk = value.path.trim() !== "";
   const profileOk = value.profileId.trim() !== "";
   const canSubmit = pathOk && profileOk && !duplicate;
@@ -60,8 +66,9 @@ const RuleEditor: React.FC<{
           <div className="file-picker-row">
             <input
               id="rule-path"
+              ref={pathInputRef}
               aria-label="Directory path"
-              placeholder="C:\\Users\\you\\work"
+              placeholder="Paste a path or click Browse…"
               value={value.path}
               onChange={(event) => {
                 setTouchedPath(true);

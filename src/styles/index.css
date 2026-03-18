@@ -480,7 +480,7 @@ h4 {
 }
 
 .checkbox-row input {
-  width: auto;
+  /* custom checkbox size already set globally; reset generic width override */
   box-shadow: none;
 }
 
@@ -751,8 +751,7 @@ input::placeholder {
 }
 
 .toggle-row input {
-  width: 16px;
-  height: 16px;
+  /* size inherited from global input[type="checkbox"] styles */
 }
 
 .rules-status {
@@ -817,8 +816,7 @@ input::placeholder {
 }
 
 /* Rule editor input/select adjustments */
-.rule-editor .field-group input,
-.rule-editor .field-group select {
+.rule-editor .field-group input {
   width: 100%;
   height: 44px;
   padding: 10px 12px;
@@ -829,44 +827,13 @@ input::placeholder {
 }
 
 .rule-editor .field-group select {
-  -webkit-appearance: none;
-  -moz-appearance: none;
-  appearance: none;
-  background-image:
-    linear-gradient(45deg, transparent 50%, rgba(255, 255, 255, 0.35) 50%),
-    linear-gradient(135deg, rgba(255, 255, 255, 0.35) 50%, transparent 50%);
-  background-position:
-    calc(100% - 18px) calc(1em + 2px),
-    calc(100% - 13px) calc(1em + 2px);
-  background-size:
-    6px 6px,
-    6px 6px;
-  background-repeat: no-repeat;
-  padding-right: 40px;
+  /* inherits global custom select styles; just ensure full width + consistent height */
+  width: 100%;
+  height: 44px;
+  padding: 10px 32px 10px 12px;
 }
 
-/* Ensure native dropdown panels match dark theme in Chromium/Tauri */
-.field-group select,
-.rule-editor .field-group select,
-select {
-  background-color: rgba(255, 255, 255, 0.03);
-  color: var(--text-primary);
-  border: 1px solid rgba(255, 255, 255, 0.04);
-}
-
-/* Some browsers allow styling option backgrounds; set both just in case */
-.field-group select option,
-.rule-editor .field-group select option,
-select option {
-  background-color: rgba(15, 17, 23, 0.95);
-  color: var(--text-primary);
-}
-
-/* For Chromium's popup, try to nudge the dropdown to dark via -webkit-appearance none */
-select::-webkit-menu-list-button {
-  background-color: rgba(15, 17, 23, 0.95);
-  color: var(--text-primary);
-}
+/* Old select theme overrides removed — now using unified global select rule below */
 
 /* Make directory path wrap nicely */
 .rule-row .rule-main strong {
@@ -1481,5 +1448,180 @@ select::-webkit-menu-list-button {
   flex: 1;
   min-width: 110px;
   font-size: 0.8rem;
-  padding: 4px 6px;
+  padding: 4px 28px 4px 8px;
+}
+
+/* ── Section Dividers ──────────────────────────────────────────────── */
+.section-divider {
+  border: none;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  margin: 2.5rem 0;
+}
+
+/* ── Custom Checkboxes ─────────────────────────────────────────────── */
+/* Hide native checkbox and replace with a custom styled box */
+input[type="checkbox"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  min-width: 18px;
+  border: 2px solid rgba(255, 255, 255, 0.22);
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.05);
+  cursor: pointer;
+  position: relative;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease;
+  flex-shrink: 0;
+}
+
+input[type="checkbox"]:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: rgba(124, 58, 237, 0.08);
+}
+
+input[type="checkbox"]:checked {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+input[type="checkbox"]:checked::after {
+  content: "";
+  position: absolute;
+  left: 3px;
+  top: 0px;
+  width: 5px;
+  height: 9px;
+  border: 2px solid #fff;
+  border-top: none;
+  border-left: none;
+  transform: rotate(40deg);
+}
+
+input[type="checkbox"]:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+input[type="checkbox"]:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.3);
+}
+
+/* Auto-switch toggle row pill style */
+.toggle-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+/* ── Custom Select (themed) ────────────────────────────────────────── */
+select {
+  -webkit-appearance: none;
+  appearance: none;
+  background-color: rgba(255, 255, 255, 0.05);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='rgba(255,255,255,0.45)' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  padding: 8px 32px 8px 12px;
+  font-size: 0.875rem;
+  font-family: inherit;
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    background-color 0.15s ease;
+}
+
+select:hover:not(:disabled) {
+  border-color: rgba(255, 255, 255, 0.22);
+  background-color: rgba(255, 255, 255, 0.08);
+}
+
+select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.12);
+}
+
+select option {
+  background-color: #1a1c24;
+  color: var(--text-primary);
+}
+
+/* ── Scanner Search + Pagination ───────────────────────────────────── */
+.scan-results-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+
+.scan-count {
+  white-space: nowrap;
+}
+
+.scan-search-wrap {
+  position: relative;
+  flex: 1;
+  max-width: 320px;
+}
+
+.scan-search-icon {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: rgba(255, 255, 255, 0.35);
+  pointer-events: none;
+}
+
+.scan-search-input {
+  width: 100%;
+  padding: 7px 12px 7px 30px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-size: 0.85rem;
+  font-family: inherit;
+  transition:
+    border-color 0.15s ease,
+    background-color 0.15s ease;
+}
+
+.scan-search-input::placeholder {
+  color: rgba(255, 255, 255, 0.3);
+}
+
+.scan-search-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  background: rgba(255, 255, 255, 0.07);
+  box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.1);
+}
+
+.scan-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  padding: 0.75rem 0 0.25rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  margin-top: 0.75rem;
+}
+
+.scan-page-info {
+  font-size: 0.82rem;
+  min-width: 80px;
+  text-align: center;
 }
