@@ -104,7 +104,9 @@ export const Dashboard: React.FC = () => {
       });
     };
     setup();
-    return () => { unlisten?.(); };
+    return () => {
+      unlisten?.();
+    };
   }, []);
 
   // Alert when the auto-switch file watcher dies unexpectedly
@@ -121,7 +123,9 @@ export const Dashboard: React.FC = () => {
       });
     };
     setup();
-    return () => { unlisten?.(); };
+    return () => {
+      unlisten?.();
+    };
   }, []);
 
   useEffect(() => {
