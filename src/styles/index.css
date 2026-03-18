@@ -477,6 +477,40 @@ h4 {
   font-size: 0.875rem;
 }
 
+/* SSH key badge on ProfileCard */
+.ssh-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 2px 8px;
+  background: rgba(124, 58, 237, 0.12);
+  color: #a78bfa;
+  border-radius: var(--radius-full);
+  font-size: 0.72rem;
+  font-weight: 600;
+  border: 1px solid rgba(124, 58, 237, 0.25);
+}
+
+/* SSH connection test result inline message */
+.ssh-test-status {
+  font-size: 0.8rem;
+  padding: 6px 10px;
+  border-radius: calc(var(--radius-md) - 2px);
+  margin-top: 0.25rem;
+}
+
+.ssh-test-ok {
+  background: rgba(16, 185, 129, 0.1);
+  color: #6ee7b7;
+  border: 1px solid rgba(16, 185, 129, 0.2);
+}
+
+.ssh-test-fail {
+  background: rgba(239, 68, 68, 0.1);
+  color: #fca5a5;
+  border: 1px solid rgba(239, 68, 68, 0.2);
+}
+
 .profile-editor-actions {
   display: flex;
   justify-content: flex-end;

@@ -45,6 +45,7 @@ pub fn run() {
             commands::rules::add_directory_rule,
             commands::rules::update_directory_rule,
             commands::rules::delete_directory_rule,
+            commands::profiles::test_ssh_connection,
         ])
         .on_window_event(|window, event| {
             // Clicking the X hides the window instead of destroying it.

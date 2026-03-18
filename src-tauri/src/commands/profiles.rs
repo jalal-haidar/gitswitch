@@ -36,11 +36,15 @@ fn validate_and_sanitize_profile(p: &mut GitProfile) -> Result<(), String> {
     p.email = sanitize_string(&p.email, 254);
     p.color = sanitize_string(&p.color, 32);
 
-    if let Some(ref mut ssh) = p.ssh_key_path.clone() {
-        let s = sanitize_string(&ssh, 1024);
+    if let Some(ref ssh) = p.ssh_key_path.clone() {
+        let s = sanitize_string(ssh, 1024);
         if s.is_empty() {
             p.ssh_key_path = None;
         } else {
+            // Verify the key file actually exists
+            if !std::path::Path::new(&s).exists() {
+                return Err(format!("SSH key file not found: {}", s));
+            }
             p.ssh_key_path = Some(s);
         }
     }
@@ -200,6 +204,18 @@ pub fn switch_profile_globally(app: AppHandle, id: String) -> Result<(), String>
         execute_git_command(vec!["config", "--global", "commit.gpgsign", "false"]).ok();
     }
 
+    // Apply SSH key if configured
+    match profile.ssh_key_path.as_deref() {
+        Some(ssh_path) if !ssh_path.is_empty() => {
+            let normalized = ssh_path.replace('\\', "/");
+            let ssh_cmd = format!("ssh -i \"{}\" -o IdentitiesOnly=yes", normalized);
+            execute_git_command(vec!["config", "--global", "core.sshCommand", &ssh_cmd])?;
+        }
+        _ => {
+            execute_git_command(vec!["config", "--global", "--unset", "core.sshCommand"]).ok();
+        }
+    }
+
     config.active_profile_id = Some(id);
     store::save_config(&app, &config).map_err(|e| e.to_string())?;
     crate::tray::refresh_tray(&app);
@@ -228,6 +244,18 @@ pub fn switch_profile_for_repo(app: AppHandle, id: String, repo_path: &Path) -> 
     } else {
         execute_git_command_in_dir(vec!["config", "--local", "--unset", "user.signingkey"], Some(repo_path)).ok();
         execute_git_command_in_dir(vec!["config", "--local", "commit.gpgsign", "false"], Some(repo_path)).ok();
+    }
+
+    // Apply SSH key per-repo if configured
+    match profile.ssh_key_path.as_deref() {
+        Some(ssh_path) if !ssh_path.is_empty() => {
+            let normalized = ssh_path.replace('\\', "/");
+            let ssh_cmd = format!("ssh -i \"{}\" -o IdentitiesOnly=yes", normalized);
+            execute_git_command_in_dir(vec!["config", "--local", "core.sshCommand", &ssh_cmd], Some(repo_path))?;
+        }
+        _ => {
+            execute_git_command_in_dir(vec!["config", "--local", "--unset", "core.sshCommand"], Some(repo_path)).ok();
+        }
     }
 
     config.active_profile_id = Some(id);
@@ -432,6 +460,127 @@ pub fn restore_global_git_config_inner(snapshot: GitConfigSnapshot) -> Result<()
     }
 
     Ok(())
+}
+
+#[derive(Serialize)]
+pub struct SshTestResult {
+    pub success: bool,
+    pub username: Option<String>,
+    pub message: String,
+}
+
+fn extract_github_username(output: &str) -> Option<String> {
+    output.split("Hi ").nth(1)
+        .and_then(|s| s.split('!').next())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
+#[tauri::command]
+pub fn test_ssh_connection(key_path: String, host: Option<String>) -> Result<SshTestResult, String> {
+    if key_path.trim().is_empty() {
+        return Err("SSH key path is required".to_string());
+    }
+
+    if !std::path::Path::new(&key_path).exists() {
+        return Err(format!("SSH key file not found: {}", key_path));
+    }
+
+    let ssh_host = match host.as_deref() {
+        Some(h) if !h.is_empty() => h.to_string(),
+        _ => "git@github.com".to_string(),
+    };
+
+    let service = if ssh_host.contains("github.com") {
+        "GitHub"
+    } else if ssh_host.contains("gitlab.com") {
+        "GitLab"
+    } else if ssh_host.contains("bitbucket.org") {
+        "Bitbucket"
+    } else {
+        "Git host"
+    };
+
+    let output = Command::new("ssh")
+        .args(["-T", "-i", &key_path,
+               "-o", "IdentitiesOnly=yes",
+               "-o", "StrictHostKeyChecking=no",
+               "-o", "BatchMode=yes",
+               "-o", "ConnectTimeout=10",
+               &ssh_host])
+        .output()
+        .map_err(|e| {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                "ssh executable not found — install OpenSSH or Git for Windows".to_string()
+            } else {
+                format!("Failed to run ssh: {}", e)
+            }
+        })?;
+
+    // GitHub/GitLab respond on stderr; combine both streams
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let combined = format!("{}{}", stderr, stdout);
+
+    // GitHub: "Hi username! You have successfully authenticated"
+    // GitLab: "Welcome to GitLab, @username!"
+    if combined.contains("Hi ") && combined.contains("! You have successfully") {
+        let username = extract_github_username(&combined);
+        return Ok(SshTestResult {
+            success: true,
+            username: username.clone(),
+            message: format!(
+                "Connected to {} as {}",
+                service,
+                username.as_deref().unwrap_or("unknown")
+            ),
+        });
+    }
+
+    if combined.contains("Welcome to GitLab") {
+        let username = combined.split('@').nth(1)
+            .and_then(|s| s.split('!').next())
+            .map(|s| s.trim().to_string());
+        return Ok(SshTestResult {
+            success: true,
+            username: username.clone(),
+            message: format!(
+                "Connected to {} as {}",
+                service,
+                username.as_deref().unwrap_or("unknown")
+            ),
+        });
+    }
+
+    let combined_lower = combined.to_lowercase();
+    if combined_lower.contains("permission denied") || combined_lower.contains("publickey") {
+        return Ok(SshTestResult {
+            success: false,
+            username: None,
+            message: format!(
+                "Authentication failed — make sure this SSH key is added to your {} account",
+                service
+            ),
+        });
+    }
+
+    if combined_lower.contains("connection refused") || combined_lower.contains("no route to host") || combined_lower.contains("timed out") {
+        return Ok(SshTestResult {
+            success: false,
+            username: None,
+            message: format!("Could not reach {} — check your network connection", service),
+        });
+    }
+
+    Ok(SshTestResult {
+        success: false,
+        username: None,
+        message: if combined.trim().is_empty() {
+            format!("No response from {}", service)
+        } else {
+            combined.trim().to_string()
+        },
+    })
 }
 
 fn execute_git_command(args: Vec<&str>) -> Result<(), String> {

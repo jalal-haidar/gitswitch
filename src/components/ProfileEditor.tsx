@@ -1,6 +1,13 @@
 import React, { useMemo, useState } from "react";
 import { open as openFilePicker } from "@tauri-apps/plugin-dialog";
+import { invoke } from "@tauri-apps/api/core";
 import type { GitProfile } from "../stores/useProfileStore";
+
+interface SshTestResult {
+  success: boolean;
+  username: string | null;
+  message: string;
+}
 
 export interface ProfileEditorValue {
   id?: string;
@@ -55,6 +62,25 @@ export const ProfileEditor: React.FC<ProfileEditorProps> = ({
     initialValue ?? emptyProfile,
   );
   const [touched, setTouched] = useState(false);
+  const [sshTestStatus, setSshTestStatus] = useState<SshTestResult | null>(null);
+  const [sshTesting, setSshTesting] = useState(false);
+
+  const testSshConnection = async () => {
+    if (!value.sshKeyPath?.trim()) return;
+    setSshTesting(true);
+    setSshTestStatus(null);
+    try {
+      const result = await invoke<SshTestResult>("test_ssh_connection", {
+        keyPath: value.sshKeyPath.trim(),
+        host: null,
+      });
+      setSshTestStatus(result);
+    } catch (e: any) {
+      setSshTestStatus({ success: false, username: null, message: String(e) });
+    } finally {
+      setSshTesting(false);
+    }
+  };
 
   const emailValid = useMemo(
     () => /.+@.+\..+/.test(value.email.trim()),
@@ -166,12 +192,34 @@ export const ProfileEditor: React.FC<ProfileEditorProps> = ({
                   multiple: false,
                   title: "Select SSH Key",
                 });
-                if (selected) setField("sshKeyPath", selected as string);
+                if (selected) {
+                  setField("sshKeyPath", selected as string);
+                  setSshTestStatus(null);
+                }
               }}
             >
               Browse
             </button>
+            {value.sshKeyPath?.trim() && (
+              <button
+                type="button"
+                className="btn btn-secondary btn-browse"
+                title="Test SSH connection to GitHub"
+                onClick={testSshConnection}
+                disabled={sshTesting}
+              >
+                {sshTesting ? "Testing…" : "Test"}
+              </button>
+            )}
           </div>
+          {sshTestStatus && (
+            <div
+              className={`ssh-test-status ${sshTestStatus.success ? "ssh-test-ok" : "ssh-test-fail"}`}
+              role="status"
+            >
+              {sshTestStatus.success ? "✓" : "✗"} {sshTestStatus.message}
+            </div>
+          )}
         </label>
         <label className="field-group" htmlFor="profile-gpg">
           <span>GPG Key ID</span>
