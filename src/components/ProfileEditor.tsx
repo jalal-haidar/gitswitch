@@ -3,6 +3,13 @@ import { open as openFilePicker } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
 import type { GitProfile } from "../stores/useProfileStore";
 
+const HelpTooltip: React.FC<{ text: string }> = ({ text }) => (
+  <span className="help-tooltip" aria-label={text} tabIndex={0}>
+    ?
+    <span className="help-tooltip-bubble" role="tooltip">{text}</span>
+  </span>
+);
+
 interface SshTestResult {
   success: boolean;
   username: string | null;
@@ -176,7 +183,7 @@ export const ProfileEditor: React.FC<ProfileEditorProps> = ({
           </div>
         </label>
         <label className="field-group" htmlFor="profile-ssh">
-          <span>SSH Key Path</span>
+          <span>SSH Key Path <HelpTooltip text="Path to your SSH private key (e.g. C:\Users\you\.ssh\id_ed25519). Must be inside your home directory. Generate one with: ssh-keygen -t ed25519 -C your@email.com — then add the .pub file to GitHub → Settings → SSH keys." /></span>
           <div className="file-picker-row">
             <input
               id="profile-ssh"
@@ -224,7 +231,7 @@ export const ProfileEditor: React.FC<ProfileEditorProps> = ({
           )}
         </label>
         <label className="field-group" htmlFor="profile-gpg">
-          <span>GPG Key ID</span>
+          <span>GPG Key ID <HelpTooltip text="Short or long ID of your GPG signing key (e.g. F88469E368AE85F0). Find it with: gpg --list-secret-keys --keyid-format SHORT. Used to sign commits — enable Vigilant Mode on GitHub to show a Verified badge on all your commits." /></span>
           <input
             id="profile-gpg"
             aria-label="GPG key id"

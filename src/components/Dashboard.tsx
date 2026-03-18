@@ -426,9 +426,48 @@ export const Dashboard: React.FC = () => {
         {loading ? (
           <div className="empty-state">Loading your profiles...</div>
         ) : profiles.length === 0 ? (
-          <div className="glass-panel empty-state">
-            <Users size={48} />
-            <p>No profiles found. Create one to get started!</p>
+          <div className="welcome-panel glass-panel">
+            <div className="welcome-icon"><Users size={40} /></div>
+            <h3>Welcome to GitSwitch</h3>
+            <p className="welcome-tagline">
+              Switch Git identities instantly — for work, personal, open-source, or any project.
+            </p>
+            <ol className="welcome-steps">
+              <li>
+                <span className="step-num">1</span>
+                <div>
+                  <strong>Create a profile</strong>
+                  <span>Click <strong>New Profile</strong> above. Set your name, email, and optionally an SSH key or GPG key.</span>
+                </div>
+              </li>
+              <li>
+                <span className="step-num">2</span>
+                <div>
+                  <strong>Switch to it</strong>
+                  <span>Hit <strong>Switch to Profile</strong> — GitSwitch writes your identity to global Git config instantly.</span>
+                </div>
+              </li>
+              <li>
+                <span className="step-num">3</span>
+                <div>
+                  <strong>Auto-switch by folder (optional)</strong>
+                  <span>Go to <strong>Directory Rules</strong> to activate profiles automatically when you enter a project folder.</span>
+                </div>
+              </li>
+              <li>
+                <span className="step-num">4</span>
+                <div>
+                  <strong>Set up SSH (optional)</strong>
+                  <span>Generate a key with <code>ssh-keygen -t ed25519</code>, add the public key to GitHub, then set the private key path in your profile.</span>
+                </div>
+              </li>
+            </ol>
+            <button
+              className="btn btn-primary welcome-cta"
+              onClick={() => setShowCreate(true)}
+            >
+              <Plus size={16} /> Create your first profile
+            </button>
           </div>
         ) : filteredProfiles.length === 0 ? (
           <div className="glass-panel empty-state">
