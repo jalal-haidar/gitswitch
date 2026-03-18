@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.2.3] - 2026-03-18
+
+### Added
+
+- **Welcome onboarding screen**: when no profiles exist, the dashboard now shows a structured 4-step guide covering profile creation, switching, directory auto-switch rules, and SSH key setup — with a direct "Create your first profile" CTA button.
+- **Help tooltips on SSH and GPG fields**: `?` icons on the SSH Key Path and GPG Key ID fields in the profile editor explain what each field does, how to generate the required key, and where to register it (GitHub Settings), visible on hover or keyboard focus.
+
+### Fixed
+
+- SSH connection test now correctly recognises GitHub's success response (`"You've successfully authenticated"`) — previously it only matched the older wording and always showed a failure indicator even when the key worked.
+
 ## [0.2.2] - 2026-03-18
 
 ### Added

@@ -58,7 +58,7 @@ export const Dashboard: React.FC = () => {
   useEffect(() => {
     getVersion()
       .then(setAppVersion)
-      .catch(() => setAppVersion("0.2.2"));
+      .catch(() => setAppVersion("0.2.3"));
   }, []);
 
   useEffect(() => {
