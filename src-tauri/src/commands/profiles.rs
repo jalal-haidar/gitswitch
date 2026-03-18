@@ -605,9 +605,13 @@ pub fn test_ssh_connection(key_path: String, host: Option<String>) -> Result<Ssh
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     let combined = format!("{}{}", stderr, stdout);
 
-    // GitHub: "Hi username! You have successfully authenticated"
-    // GitLab: "Welcome to GitLab, @username!"
-    if combined.contains("Hi ") && combined.contains("! You have successfully") {
+    // GitHub: "Hi username! You've successfully authenticated, but GitHub does not provide shell access."
+    // Older GitHub / some clients: "Hi username! You have successfully authenticated"
+    // Also match the "does not provide shell access" variant which is the normal interactive response.
+    let is_github_success = combined.contains("Hi ")
+        && (combined.contains("successfully authenticated")
+            || combined.contains("does not provide shell access"));
+    if is_github_success {
         let username = extract_github_username(&combined);
         return Ok(SshTestResult {
             success: true,
