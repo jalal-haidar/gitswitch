@@ -382,8 +382,19 @@ h4 {
 
 .profile-editor-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  grid-template-columns: repeat(3, 1fr);
   gap: var(--card-gap);
+}
+
+/* SSH key path spans the full width so Browse + Test never crowd the input */
+.field-group--wide {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 600px) {
+  .profile-editor-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .field-group {
@@ -443,14 +454,15 @@ h4 {
 
 .file-picker-row input {
   flex: 1;
-  min-width: 0;
+  min-width: 0; /* allow shrink below content size so flex takes over */
 }
 
 .btn-browse {
-  padding: 8px 12px;
+  padding: 8px 14px;
   white-space: nowrap;
   flex-shrink: 0;
-  font-size: 0.8rem;
+  font-size: 0.82rem;
+  height: 44px; /* match input height */
 }
 
 .color-input {

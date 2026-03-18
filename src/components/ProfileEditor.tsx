@@ -184,7 +184,7 @@ export const ProfileEditor: React.FC<ProfileEditorProps> = ({
             />
           </div>
         </label>
-        <label className="field-group" htmlFor="profile-ssh">
+        <label className="field-group field-group--wide" htmlFor="profile-ssh">
           <span>
             SSH Key Path{" "}
             <HelpTooltip text="Path to your SSH private key (e.g. C:\Users\you\.ssh\id_ed25519). Must be inside your home directory. Generate one with: ssh-keygen -t ed25519 -C your@email.com — then add the .pub file to GitHub → Settings → SSH keys." />
