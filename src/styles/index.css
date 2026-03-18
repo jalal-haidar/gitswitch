@@ -1289,6 +1289,17 @@ select::-webkit-menu-list-button {
   gap: 0.4rem;
 }
 
+/* Compact variant for the Directory Rules empty guide */
+.rules-empty-guide {
+  padding: 2rem 1.75rem;
+}
+.rules-empty-guide h3 {
+  font-size: 1.1rem;
+}
+.rules-empty-guide .welcome-steps {
+  max-width: 400px;
+}
+
 /* ── Help tooltip (? icons in field labels) ─────────── */
 .help-tooltip {
   display: inline-flex;

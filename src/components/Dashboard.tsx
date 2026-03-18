@@ -539,6 +539,7 @@ export const Dashboard: React.FC = () => {
               <button
                 className="btn btn-primary"
                 type="button"
+                title="Pick a root folder (e.g. C:\projects) to recursively find all git repos inside it. Each row shows the current identity in that repo and lets you apply any profile in one click."
                 onClick={handleScanRepos}
                 disabled={scanLoading}
               >

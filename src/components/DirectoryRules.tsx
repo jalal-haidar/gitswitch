@@ -320,6 +320,7 @@ export const DirectoryRulesSection: React.FC = () => {
           <button
             className="btn btn-primary"
             type="button"
+            title="Create a directory rule: whenever you save a file inside a matched folder, GitSwitch automatically switches to the assigned profile — no manual switching needed."
             onClick={startCreate}
           >
             <Plus size={16} /> Add Rule
@@ -363,13 +364,39 @@ export const DirectoryRulesSection: React.FC = () => {
         />
       )}
 
-      {directoryRules.length === 0 ? (
-        <div
-          className="glass-panel empty-state"
-          role="status"
-          aria-live="polite"
-        >
-          <p>No directory rules yet.</p>
+      {directoryRules.length === 0 && !showCreate ? (
+        <div className="welcome-panel glass-panel rules-empty-guide" role="status" aria-live="polite">
+          <div className="welcome-icon"><FolderOpen size={32} /></div>
+          <h3>Auto-switch by directory</h3>
+          <p className="welcome-tagline">
+            GitSwitch can switch your Git identity automatically when you work in different folders — no manual switching needed.
+          </p>
+          <ol className="welcome-steps">
+            <li>
+              <span className="step-num">1</span>
+              <div>
+                <strong>Enable Auto-switch</strong>
+                <span>Toggle <strong>Auto-switch</strong> on above. GitSwitch watches your filesystem in the background.</span>
+              </div>
+            </li>
+            <li>
+              <span className="step-num">2</span>
+              <div>
+                <strong>Add a rule</strong>
+                <span>Click <strong>+ Add Rule</strong> and pick a folder (e.g. <code>C:\work</code>) and which profile to activate when a file change is detected inside it.</span>
+              </div>
+            </li>
+            <li>
+              <span className="step-num">3</span>
+              <div>
+                <strong>Work normally</strong>
+                <span>Save any file in that folder — GitSwitch silently applies the matching profile's identity to that repository's local config.</span>
+              </div>
+            </li>
+          </ol>
+          <button className="btn btn-primary welcome-cta" onClick={startCreate}>
+            <Plus size={16} /> Add your first rule
+          </button>
         </div>
       ) : (
         <div className="rule-list" role="list">

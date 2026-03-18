@@ -223,7 +223,7 @@ export const ProfileCard: React.FC<ProfileCardProps> = ({
           type="button"
           disabled={applyBusy}
           aria-label={`Apply ${profile.label} to a repository`}
-          title="Apply identity to a specific repository"
+          title="Pick a repository folder and apply this profile's name, email, SSH key and GPG key to its local git config — overrides global config for that repo only."
           onClick={async () => {
             setApplyBusy(true);
             try {
