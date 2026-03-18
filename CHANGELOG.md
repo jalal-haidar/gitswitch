@@ -3,6 +3,23 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.2.4] - 2026-03-18
+
+### Added
+
+- **Section dividers**: visual separators between the Your Profiles, Repo Scanner, and Directory Rules sections for clearer layout.
+- **Repo Scanner search filter**: filter the scan results list in real time by repo name, path, or detected identity.
+- **Repo Scanner pagination**: scan results are now paginated (20 repos per page) with Prev / Next controls, preventing UI freeze when scanning large directories.
+- **Custom styled checkboxes**: all checkboxes app-wide now use a consistent themed design (accent-colour fill, custom check mark, focus ring) replacing the native OS style.
+- **Custom styled select dropdowns**: all `<select>` elements use a unified dark-themed appearance with a custom chevron arrow, hover glow, and focus ring.
+- **Directory path input auto-focus**: when "Add your first rule" (or Add Rule) is clicked, the Directory Path input is focused automatically.
+- **Improved placeholder text** on the Directory Path input: `"Paste a path or click Browse…"` instead of the previous generic example.
+
+### Changed
+
+- **Detected Identities section** is now hidden by default and only appears after the user clicks the **Detect** button in the header, reducing visual clutter on first load.
+- **Settings section order** updated to: Theme → Startup → Security → Updates → Profiles Backup (theme and common preferences promoted to the top).
+
 ## [0.2.3] - 2026-03-18
 
 ### Added

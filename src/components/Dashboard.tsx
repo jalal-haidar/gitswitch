@@ -67,7 +67,7 @@ export const Dashboard: React.FC = () => {
   useEffect(() => {
     getVersion()
       .then(setAppVersion)
-      .catch(() => setAppVersion("0.2.3"));
+      .catch(() => setAppVersion("0.2.4"));
   }, []);
 
   useEffect(() => {
@@ -270,9 +270,16 @@ export const Dashboard: React.FC = () => {
     );
   }, [scannedRepos, scanSearch]);
 
-  const scanTotalPages = Math.max(1, Math.ceil(filteredScanRepos.length / SCAN_PAGE_SIZE));
+  const scanTotalPages = Math.max(
+    1,
+    Math.ceil(filteredScanRepos.length / SCAN_PAGE_SIZE),
+  );
   const pagedScanRepos = useMemo(
-    () => filteredScanRepos.slice(scanPage * SCAN_PAGE_SIZE, (scanPage + 1) * SCAN_PAGE_SIZE),
+    () =>
+      filteredScanRepos.slice(
+        scanPage * SCAN_PAGE_SIZE,
+        (scanPage + 1) * SCAN_PAGE_SIZE,
+      ),
     [filteredScanRepos, scanPage],
   );
 
@@ -609,7 +616,10 @@ export const Dashboard: React.FC = () => {
                     className="scan-search-input"
                     placeholder="Filter by name, path, or identity…"
                     value={scanSearch}
-                    onChange={(e) => { setScanSearch(e.target.value); setScanPage(0); }}
+                    onChange={(e) => {
+                      setScanSearch(e.target.value);
+                      setScanPage(0);
+                    }}
                   />
                 </div>
               </div>
@@ -724,7 +734,9 @@ export const Dashboard: React.FC = () => {
                   <button
                     className="btn btn-secondary btn-sm"
                     disabled={scanPage >= scanTotalPages - 1}
-                    onClick={() => setScanPage((p) => Math.min(scanTotalPages - 1, p + 1))}
+                    onClick={() =>
+                      setScanPage((p) => Math.min(scanTotalPages - 1, p + 1))
+                    }
                   >
                     Next ›
                   </button>

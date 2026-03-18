@@ -372,32 +372,49 @@ export const DirectoryRulesSection: React.FC = () => {
       )}
 
       {directoryRules.length === 0 && !showCreate ? (
-        <div className="welcome-panel glass-panel rules-empty-guide" role="status" aria-live="polite">
-          <div className="welcome-icon"><FolderOpen size={32} /></div>
+        <div
+          className="welcome-panel glass-panel rules-empty-guide"
+          role="status"
+          aria-live="polite"
+        >
+          <div className="welcome-icon">
+            <FolderOpen size={32} />
+          </div>
           <h3>Auto-switch by directory</h3>
           <p className="welcome-tagline">
-            GitSwitch can switch your Git identity automatically when you work in different folders — no manual switching needed.
+            GitSwitch can switch your Git identity automatically when you work
+            in different folders — no manual switching needed.
           </p>
           <ol className="welcome-steps">
             <li>
               <span className="step-num">1</span>
               <div>
                 <strong>Enable Auto-switch</strong>
-                <span>Toggle <strong>Auto-switch</strong> on above. GitSwitch watches your filesystem in the background.</span>
+                <span>
+                  Toggle <strong>Auto-switch</strong> on above. GitSwitch
+                  watches your filesystem in the background.
+                </span>
               </div>
             </li>
             <li>
               <span className="step-num">2</span>
               <div>
                 <strong>Add a rule</strong>
-                <span>Click <strong>+ Add Rule</strong> and pick a folder (e.g. <code>C:\work</code>) and which profile to activate when a file change is detected inside it.</span>
+                <span>
+                  Click <strong>+ Add Rule</strong> and pick a folder (e.g.{" "}
+                  <code>C:\work</code>) and which profile to activate when a
+                  file change is detected inside it.
+                </span>
               </div>
             </li>
             <li>
               <span className="step-num">3</span>
               <div>
                 <strong>Work normally</strong>
-                <span>Save any file in that folder — GitSwitch silently applies the matching profile's identity to that repository's local config.</span>
+                <span>
+                  Save any file in that folder — GitSwitch silently applies the
+                  matching profile's identity to that repository's local config.
+                </span>
               </div>
             </li>
           </ol>
