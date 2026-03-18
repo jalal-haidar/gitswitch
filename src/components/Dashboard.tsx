@@ -6,10 +6,13 @@ import {
   RefreshCw,
   Settings as SettingsIcon,
   Search,
+  ScanSearch,
 } from "lucide-react";
+import { open as openFolderPicker } from "@tauri-apps/plugin-dialog";
+import { invoke } from "@tauri-apps/api/core";
 import Settings from "./Settings";
 
-import { GitProfile, useProfileStore } from "../stores/useProfileStore";
+import { GitProfile, ScannedRepo, useProfileStore } from "../stores/useProfileStore";
 import { useToast } from "./ui/useToast";
 import { normalizeBackendError } from "../utils/error";
 import { ProfileCard } from "./ProfileCard";
@@ -31,6 +34,7 @@ export const Dashboard: React.FC = () => {
     updateProfile,
     detectIdentities,
     detectLoading,
+    scanRepos,
   } = useProfileStore();
   const [showCreate, setShowCreate] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -38,6 +42,12 @@ export const Dashboard: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const searchInputRef = useRef<HTMLInputElement>(null);
   const toast = useToast();
+
+  // Repo scanner state
+  const [scannedRepos, setScannedRepos] = useState<ScannedRepo[]>([]);
+  const [scanLoading, setScanLoading] = useState(false);
+  const [applyTargets, setApplyTargets] = useState<Record<string, string>>({});
+  const [applyingPath, setApplyingPath] = useState<string | null>(null);
 
   useEffect(() => {
     fetchProfiles();
@@ -243,6 +253,49 @@ export const Dashboard: React.FC = () => {
     }
   };
 
+  const handleScanRepos = async () => {
+    const root = await openFolderPicker({
+      multiple: false,
+      directory: true,
+      title: "Select root folder to scan for git repos",
+    });
+    if (!root) return;
+    setScanLoading(true);
+    try {
+      const results = await scanRepos(root as string);
+      setScannedRepos(results);
+      // Pre-select matched profile (or first profile) for each row
+      const targets: Record<string, string> = {};
+      for (const r of results) {
+        targets[r.path] = r.matchedProfileId ?? profiles[0]?.id ?? "";
+      }
+      setApplyTargets(targets);
+      if (results.length === 0) {
+        toast.show({ message: "No git repos found in that folder.", kind: "success" });
+      }
+    } catch (e: any) {
+      toast.show({ message: `Scan failed: ${e}`, kind: "error" });
+    } finally {
+      setScanLoading(false);
+    }
+  };
+
+  const handleApplyToRepo = async (repoPath: string) => {
+    const profileId = applyTargets[repoPath];
+    if (!profileId) return;
+    setApplyingPath(repoPath);
+    try {
+      await invoke("apply_profile_to_repo", { profileId, repoPath });
+      const label = profiles.find((p) => p.id === profileId)?.label ?? profileId;
+      const repoName = repoPath.replace(/\\/g, "/").split("/").filter(Boolean).pop() ?? repoPath;
+      toast.show({ message: `Applied "${label}" to ${repoName}`, kind: "success" });
+    } catch (e: any) {
+      toast.show({ message: `Apply failed: ${e}`, kind: "error" });
+    } finally {
+      setApplyingPath(null);
+    }
+  };
+
   return (
     <div className="dashboard">
       <header className="dashboard-header">
@@ -353,6 +406,136 @@ export const Dashboard: React.FC = () => {
 
         <section className="detected-section">
           <DetectedProfilesList />
+        </section>
+
+        {/* ── Repo Scanner ─────────────────────────────────────────────── */}
+        <section className="scan-section" aria-labelledby="scan-heading">
+          <div className="section-header">
+            <h2 id="scan-heading">Repo Scanner</h2>
+            <div className="section-actions">
+              {scannedRepos.length > 0 && (
+                <button
+                  className="btn btn-ghost"
+                  type="button"
+                  onClick={() => setScannedRepos([])}
+                >
+                  Clear
+                </button>
+              )}
+              <button
+                className="btn btn-primary"
+                type="button"
+                onClick={handleScanRepos}
+                disabled={scanLoading}
+              >
+                <ScanSearch size={16} />
+                {scanLoading ? "Scanning…" : "Scan Folder…"}
+              </button>
+            </div>
+          </div>
+
+          {scannedRepos.length === 0 && !scanLoading && (
+            <p className="muted scan-hint">
+              Pick a root folder (e.g. C:\projects) to discover all git repos
+              inside it and bulk-apply identities in one place.
+            </p>
+          )}
+
+          {scannedRepos.length > 0 && (
+            <div className="glass-panel scan-results">
+              <div className="scan-count muted">
+                {scannedRepos.length} repo{scannedRepos.length !== 1 ? "s" : ""} found
+              </div>
+              <div className="scan-table" role="table" aria-label="Scanned repositories">
+                <div className="scan-header" role="row" aria-hidden="true">
+                  <span>Repository</span>
+                  <span>Detected Identity</span>
+                  <span>Apply Profile</span>
+                </div>
+                {scannedRepos.map((repo) => {
+                  const matchedProfile = profiles.find(
+                    (p) => p.id === repo.matchedProfileId,
+                  );
+                  const targetProfileId = applyTargets[repo.path] ?? "";
+                  const isApplying = applyingPath === repo.path;
+                  return (
+                    <div key={repo.path} className="scan-row" role="row">
+                      <div className="scan-cell scan-repo-info">
+                        <strong className="scan-repo-name">{repo.name}</strong>
+                        <span
+                          className="muted scan-repo-path"
+                          title={repo.path}
+                        >
+                          {repo.path}
+                        </span>
+                        {repo.remoteService && (
+                          <span
+                            className={`detail-item remote-badge remote-badge--${repo.remoteService}`}
+                          >
+                            {repo.remoteService.charAt(0).toUpperCase() +
+                              repo.remoteService.slice(1)}
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="scan-cell scan-identity">
+                        {repo.userName || repo.userEmail ? (
+                          <>
+                            <span>{repo.userName ?? "–"}</span>
+                            <span className="muted">{repo.userEmail ?? ""}</span>
+                            {matchedProfile ? (
+                              <span
+                                className="detail-item scan-match-badge"
+                                style={{
+                                  background: `${matchedProfile.color}22`,
+                                  color: matchedProfile.color,
+                                  borderColor: `${matchedProfile.color}44`,
+                                }}
+                              >
+                                {matchedProfile.label}
+                              </span>
+                            ) : (
+                              <span className="muted scan-no-match">No match</span>
+                            )}
+                          </>
+                        ) : (
+                          <span className="muted">Not set</span>
+                        )}
+                      </div>
+
+                      <div className="scan-cell scan-apply">
+                        <select
+                          value={targetProfileId}
+                          onChange={(e) =>
+                            setApplyTargets((prev) => ({
+                              ...prev,
+                              [repo.path]: e.target.value,
+                            }))
+                          }
+                          aria-label={`Select profile for ${repo.name}`}
+                        >
+                          <option value="">– select –</option>
+                          {profiles.map((p) => (
+                            <option key={p.id} value={p.id}>
+                              {p.label}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          className="btn btn-primary btn-sm"
+                          type="button"
+                          disabled={!targetProfileId || isApplying}
+                          onClick={() => handleApplyToRepo(repo.path)}
+                        >
+                          {isApplying ? "Applying…" : "Apply"}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </section>
 
         <DirectoryRulesSection />

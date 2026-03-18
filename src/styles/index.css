@@ -1198,3 +1198,119 @@ select::-webkit-menu-list-button {
   margin-top: 2px;
   opacity: 0.75;
 }
+
+/* ─── Small button variant ──────────────────────────────────────────────────── */
+.btn.btn-sm {
+  padding: 4px 10px;
+  font-size: 0.8rem;
+}
+
+/* ─── Repo Scanner section ──────────────────────────────────────────────────── */
+.scan-section {
+  margin-top: 1.5rem;
+}
+
+.scan-hint {
+  font-size: 0.85rem;
+  margin-top: 0.5rem;
+}
+
+.scan-results {
+  margin-top: 0.75rem;
+  padding: var(--card-padding);
+  overflow-x: auto;
+}
+
+.scan-count {
+  font-size: 0.8rem;
+  margin-bottom: 0.75rem;
+}
+
+.scan-table {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  gap: 0;
+  min-width: 580px;
+}
+
+.scan-header {
+  display: contents;
+}
+
+.scan-header > span {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary);
+  padding: 0 0.5rem 0.5rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.scan-row {
+  display: contents;
+}
+
+.scan-row:hover > .scan-cell {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.scan-cell {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+  padding: 0.6rem 0.5rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  font-size: 0.85rem;
+}
+
+.scan-repo-name {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.scan-repo-path {
+  font-size: 0.72rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 240px;
+  direction: rtl;
+  text-align: left;
+}
+
+.scan-identity {
+  gap: 2px;
+}
+
+.scan-match-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  border-radius: var(--radius-full);
+  font-size: 0.7rem;
+  font-weight: 600;
+  border: 1px solid;
+  width: fit-content;
+  margin-top: 2px;
+}
+
+.scan-no-match {
+  font-size: 0.72rem;
+  margin-top: 2px;
+}
+
+.scan-apply {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: nowrap;
+}
+
+.scan-apply select {
+  flex: 1;
+  min-width: 110px;
+  font-size: 0.8rem;
+  padding: 4px 6px;
+}
