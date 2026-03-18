@@ -491,6 +491,20 @@ h4 {
   border: 1px solid rgba(124, 58, 237, 0.25);
 }
 
+/* GPG key badge on ProfileCard */
+.gpg-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 2px 8px;
+  background: rgba(16, 185, 129, 0.1);
+  color: #6ee7b7;
+  border-radius: var(--radius-full);
+  font-size: 0.72rem;
+  font-weight: 600;
+  border: 1px solid rgba(16, 185, 129, 0.2);
+}
+
 /* SSH connection test result inline message */
 .ssh-test-status {
   font-size: 0.8rem;

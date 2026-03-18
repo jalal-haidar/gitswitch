@@ -103,6 +103,47 @@ fn run_watcher_loop(app: AppHandle) -> Result<(), String> {
     }
 }
 
+/// Returns true for known-noisy paths that should not trigger a profile switch:
+/// temp files, editor swaps, OS metadata, build artefacts.
+fn should_ignore_path(path: &Path) -> bool {
+    let path_str = path.to_string_lossy();
+    let path_lower = path_str.to_lowercase();
+
+    // Skip anything under node_modules or .git internals that aren't meaningful
+    if path_lower.contains("/node_modules/") || path_lower.contains("\\node_modules\\") {
+        return true;
+    }
+    // Changes inside .git sub-directories (objects, refs, logs) are noisy;
+    // we still want COMMIT_EDITMSG and HEAD changes so only filter the deep internals.
+    if (path_lower.contains("/.git/objects") || path_lower.contains("\\.git\\objects"))
+        || (path_lower.contains("/.git/refs") || path_lower.contains("\\.git\\refs"))
+        || (path_lower.contains("/.git/logs") || path_lower.contains("\\.git\\logs"))
+    {
+        return true;
+    }
+
+    // Filter by file extension / name
+    if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
+        let name_lower = file_name.to_lowercase();
+        // OS metadata
+        if name_lower == ".ds_store" || name_lower == "thumbs.db" || name_lower == "desktop.ini" {
+            return true;
+        }
+        // Temp / swap / lock files
+        if name_lower.ends_with(".tmp")
+            || name_lower.ends_with(".lock")
+            || name_lower.ends_with(".swp")
+            || name_lower.ends_with(".swo")
+            || name_lower.ends_with(".bak")
+            || name_lower.ends_with('~')
+        {
+            return true;
+        }
+    }
+
+    false
+}
+
 fn handle_event(app: &AppHandle, rules: &[ResolvedRule], event: &Event) {
     if rules.is_empty() {
         return;
@@ -111,6 +152,11 @@ fn handle_event(app: &AppHandle, rules: &[ResolvedRule], event: &Event) {
     let mut best_match: Option<(&ResolvedRule, PathBuf)> = None;
 
     for event_path in &event.paths {
+        // Skip noisy temp/OS/build files — no need to switch for these
+        if should_ignore_path(event_path) {
+            continue;
+        }
+
         let normalized_event_path = normalize_path(event_path).unwrap_or_else(|| event_path.to_path_buf());
 
         for rule in rules {

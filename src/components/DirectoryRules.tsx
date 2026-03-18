@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { Pencil, Plus, Trash2, FolderOpen } from "lucide-react";
+import { open as openFolderPicker } from "@tauri-apps/plugin-dialog";
 import { normalizeBackendError } from "../utils/error";
 import { useToast } from "./ui/useToast";
 import { DirectoryRule, useProfileStore } from "../stores/useProfileStore";
@@ -56,17 +57,37 @@ const RuleEditor: React.FC<{
       <div className="rule-editor-grid">
         <label className="field-group" htmlFor="rule-path">
           <span>Directory Path</span>
-          <input
-            id="rule-path"
-            aria-label="Directory path"
-            placeholder="C:\\Users\\you\\work"
-            value={value.path}
-            onChange={(event) => {
-              setTouchedPath(true);
-              onChange({ ...value, path: event.target.value });
-            }}
-            onBlur={() => setTouchedPath(true)}
-          />
+          <div className="file-picker-row">
+            <input
+              id="rule-path"
+              aria-label="Directory path"
+              placeholder="C:\\Users\\you\\work"
+              value={value.path}
+              onChange={(event) => {
+                setTouchedPath(true);
+                onChange({ ...value, path: event.target.value });
+              }}
+              onBlur={() => setTouchedPath(true)}
+            />
+            <button
+              type="button"
+              className="btn btn-secondary btn-browse"
+              title="Browse for directory"
+              onClick={async () => {
+                const selected = await openFolderPicker({
+                  multiple: false,
+                  directory: true,
+                  title: "Select Directory",
+                });
+                if (selected) {
+                  setTouchedPath(true);
+                  onChange({ ...value, path: selected as string });
+                }
+              }}
+            >
+              <FolderOpen size={14} />
+            </button>
+          </div>
         </label>
 
         <label className="field-group" htmlFor="rule-profile">
@@ -150,13 +171,21 @@ export const DirectoryRulesSection: React.FC = () => {
   }, [fetchAutoSwitchSetting]);
 
   useEffect(() => {
+    // Fetch once on mount, then update live via the auto-switch-triggered event
+    // (replaces the old 3-second setInterval poll)
     fetchLastAutoSwitchEvent().catch(() => undefined);
 
-    const timer = window.setInterval(() => {
-      fetchLastAutoSwitchEvent().catch(() => undefined);
-    }, 3000);
-
-    return () => window.clearInterval(timer);
+    let unlisten: (() => void) | undefined;
+    const setup = async () => {
+      const { listen } = await import("@tauri-apps/api/event");
+      unlisten = await listen("auto-switch-triggered", () => {
+        fetchLastAutoSwitchEvent().catch(() => undefined);
+      });
+    };
+    setup();
+    return () => {
+      unlisten?.();
+    };
   }, [fetchLastAutoSwitchEvent]);
 
   const profileOptions = useMemo(

@@ -6,6 +6,7 @@ import {
   CheckCircle2,
   Pencil,
   KeyRound,
+  Key,
 } from "lucide-react";
 import { GitProfile, useProfileStore } from "../stores/useProfileStore";
 import { invoke } from "@tauri-apps/api/core";
@@ -37,7 +38,14 @@ export const ProfileCard: React.FC<ProfileCardProps> = ({
       aria-label={`Profile ${profile.label}`}
     >
       <div className="profile-header">
-        <div className="profile-avatar">
+        <div
+          className="profile-avatar"
+          style={{
+            background: `${profile.color}26`,
+            borderColor: `${profile.color}50`,
+            color: profile.color,
+          }}
+        >
           <User size={20} />
         </div>
         <div className="profile-info">
@@ -55,6 +63,14 @@ export const ProfileCard: React.FC<ProfileCardProps> = ({
                 title={`SSH key: ${profile.sshKeyPath}`}
               >
                 <KeyRound size={12} /> SSH
+              </span>
+            )}
+            {profile.gpgKeyId && (
+              <span
+                className="detail-item gpg-badge"
+                title={`GPG key: ${profile.gpgKeyId}`}
+              >
+                <Key size={12} /> GPG
               </span>
             )}
           </div>

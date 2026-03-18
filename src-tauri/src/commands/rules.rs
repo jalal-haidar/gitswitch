@@ -103,6 +103,10 @@ pub fn add_directory_rule(app: AppHandle, mut rule: DirectoryRule) -> Result<Dir
         return Err("A directory rule with the same path and profile already exists".to_string());
     }
 
+    if !std::path::Path::new(&path).exists() {
+        return Err(format!("Directory does not exist: {}", path));
+    }
+
     if rule.id.is_empty() {
         rule.id = Uuid::new_v4().to_string();
     }
@@ -139,6 +143,10 @@ pub fn update_directory_rule(app: AppHandle, rule: DirectoryRule) -> Result<Dire
     });
     if duplicate {
         return Err("A directory rule with the same path and profile already exists".to_string());
+    }
+
+    if !std::path::Path::new(&path).exists() {
+        return Err(format!("Directory does not exist: {}", path));
     }
 
     let mut found = false;

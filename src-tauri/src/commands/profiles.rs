@@ -258,6 +258,12 @@ pub fn switch_profile_for_repo(app: AppHandle, id: String, repo_path: &Path) -> 
     // Apply SSH key per-repo if configured
     match profile.ssh_key_path.as_deref() {
         Some(ssh_path) if !ssh_path.is_empty() => {
+            if !std::path::Path::new(ssh_path).exists() {
+                return Err(format!(
+                    "SSH key file not found for profile '{}': {}. Edit the profile to fix the path.",
+                    profile.label, ssh_path
+                ));
+            }
             let normalized = ssh_path.replace('\\', "/");
             let ssh_cmd = format!("ssh -i \"{}\" -o IdentitiesOnly=yes", normalized);
             execute_git_command_in_dir(vec!["config", "--local", "core.sshCommand", &ssh_cmd], Some(repo_path))?;
@@ -351,6 +357,8 @@ fn capture_git_config_value(args: Vec<&str>) -> Result<Option<String>, String> {
     Ok(Some(stdout.trim().to_string()))
 }
 
+const EXPORT_VERSION: u32 = 1;
+
 #[derive(Serialize, Deserialize)]
 struct ProfilesExport {
     version: u32,
@@ -361,7 +369,7 @@ struct ProfilesExport {
 pub fn export_profiles(app: AppHandle, path: String) -> Result<(), String> {
     let config = store::load_config(&app).map_err(|e| e.to_string())?;
     let export = ProfilesExport {
-        version: 1,
+        version: EXPORT_VERSION,
         profiles: config.profiles,
     };
     let json = serde_json::to_string_pretty(&export)
@@ -379,6 +387,13 @@ pub fn import_profiles(app: AppHandle, path: String) -> Result<ImportResult, Str
         .map_err(|e| format!("Could not read file: {e}"))?;
     let export: ProfilesExport = serde_json::from_str(&json)
         .map_err(|_| "Invalid or unrecognised export file.".to_string())?;
+
+    if export.version > EXPORT_VERSION {
+        return Err(format!(
+            "This export was created with a newer version of GitSwitch (export version {}). Please update the app to import it.",
+            export.version
+        ));
+    }
 
     let mut config = store::load_config(&app).map_err(|e| e.to_string())?;
     let mut added = 0u32;
