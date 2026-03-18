@@ -46,6 +46,10 @@ pub fn run() {
             commands::rules::update_directory_rule,
             commands::rules::delete_directory_rule,
             commands::profiles::test_ssh_connection,
+            commands::profiles::apply_profile_to_repo,
+            commands::rules::get_theme,
+            commands::rules::set_theme,
+            commands::detect::scan_repos,
         ])
         .on_window_event(|window, event| {
             // Clicking the X hides the window instead of destroying it.

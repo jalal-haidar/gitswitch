@@ -11,12 +11,27 @@ export interface GitProfile {
   sshKeyPath?: string;
   gpgKeyId?: string;
   isDefault: boolean;
+  /** Populated only by detect/scan — never persisted to profiles.json */
+  remoteUrl?: string;
+  remoteService?: string;
 }
 
 export interface DirectoryRule {
   id: string;
   path: string;
   profileId: string;
+  /** Epoch-ms timestamp of the last auto-switch that fired for this rule */
+  lastTriggeredAt?: number;
+}
+
+export interface ScannedRepo {
+  path: string;
+  name: string;
+  userName?: string;
+  userEmail?: string;
+  remoteUrl?: string;
+  remoteService?: string;
+  matchedProfileId?: string;
 }
 
 export interface AutoSwitchEvent {
@@ -56,6 +71,10 @@ interface ProfileState {
   addDirectoryRule: (rule: Omit<DirectoryRule, "id">) => Promise<DirectoryRule>;
   updateDirectoryRule: (rule: DirectoryRule) => Promise<void>;
   deleteDirectoryRule: (id: string) => Promise<void>;
+  applyProfileToRepo: (profileId: string, repoPath: string) => Promise<void>;
+  getTheme: () => Promise<string>;
+  setTheme: (theme: string) => Promise<void>;
+  scanRepos: (root: string, maxDepth?: number) => Promise<ScannedRepo[]>;
 }
 
 export const useProfileStore = create<ProfileState>((set, get) => ({
@@ -261,5 +280,22 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
       set({ rulesError: e.toString(), rulesLoading: false });
       throw e;
     }
+  },
+
+  applyProfileToRepo: async (profileId, repoPath) => {
+    await invoke("apply_profile_to_repo", { profileId, repoPath });
+  },
+
+  getTheme: async () => {
+    return invoke<string>("get_theme");
+  },
+
+  setTheme: async (theme) => {
+    await invoke("set_theme", { theme });
+    document.documentElement.setAttribute("data-theme", theme);
+  },
+
+  scanRepos: async (root, maxDepth?) => {
+    return invoke<ScannedRepo[]>("scan_repos", { root, maxDepth });
   },
 }));

@@ -487,6 +487,33 @@ pub fn restore_global_git_config_inner(snapshot: GitConfigSnapshot) -> Result<()
     Ok(())
 }
 
+/// Walk up from `path` until we find a directory that contains `.git`.
+fn find_git_root(path: &Path) -> Option<std::path::PathBuf> {
+    let mut current = path.to_path_buf();
+    loop {
+        if current.join(".git").exists() {
+            return Some(current);
+        }
+        match current.parent() {
+            Some(parent) => current = parent.to_path_buf(),
+            None => return None,
+        }
+    }
+}
+
+/// Tauri command: apply a profile to a specific repo directory.
+/// Accepts any path inside the repo — walks up to find the .git root.
+#[tauri::command]
+pub fn apply_profile_to_repo(app: AppHandle, id: String, repo_path: String) -> Result<(), String> {
+    let path = Path::new(&repo_path);
+    if !path.exists() {
+        return Err(format!("Path does not exist: {}", repo_path));
+    }
+    let git_root = find_git_root(path)
+        .ok_or_else(|| format!("Not a git repository (or any parent directory): {}", repo_path))?;
+    switch_profile_for_repo(app, id, &git_root)
+}
+
 #[derive(Serialize)]
 pub struct SshTestResult {
     pub success: bool,

@@ -169,6 +169,7 @@ pub fn update_directory_rule(app: AppHandle, rule: DirectoryRule) -> Result<Dire
         id: rule.id,
         path,
         profile_id: rule.profile_id,
+        last_triggered_at: rule.last_triggered_at,
     })
 }
 
@@ -185,4 +186,22 @@ pub fn delete_directory_rule(app: AppHandle, id: String) -> Result<(), String> {
 
     store::save_config(&app, &config).map_err(|e| e.to_string())?;
     Ok(())
+}
+
+#[tauri::command]
+pub fn get_theme(app: AppHandle) -> Result<String, String> {
+    let config = store::load_config(&app).map_err(|e| e.to_string())?;
+    Ok(config.settings.theme)
+}
+
+#[tauri::command]
+pub fn set_theme(app: AppHandle, theme: String) -> Result<String, String> {
+    let valid = ["system", "dark", "light"];
+    if !valid.contains(&theme.as_str()) {
+        return Err(format!("Invalid theme '{}'. Use: system, dark, light", theme));
+    }
+    let mut config = store::load_config(&app).map_err(|e| e.to_string())?;
+    config.settings.theme = theme.clone();
+    store::save_config(&app, &config).map_err(|e| e.to_string())?;
+    Ok(theme)
 }

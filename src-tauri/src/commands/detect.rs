@@ -1,5 +1,5 @@
 use tauri::AppHandle;
-use std::{process::Command, fs, env, path::Path};
+use std::{process::Command, fs, env, path::{Path, PathBuf}};
 use crate::errors::BackendError;
 use uuid::Uuid;
 
@@ -13,7 +13,34 @@ fn no_window(cmd: &mut Command) {
 #[cfg(not(windows))]
 fn no_window(_cmd: &mut Command) {}
 
-use crate::models::GitProfile;
+use crate::models::{GitProfile, ScannedRepo};
+
+/// Classify a remote URL into a known service name.
+pub fn detect_remote_service(url: &str) -> String {
+    let lower = url.to_lowercase();
+    if lower.contains("github.com") {
+        "github".to_string()
+    } else if lower.contains("gitlab.com") || lower.contains("gitlab.") {
+        "gitlab".to_string()
+    } else if lower.contains("bitbucket.org") {
+        "bitbucket".to_string()
+    } else {
+        "other".to_string()
+    }
+}
+
+/// Run a single `git config` command in `dir`, returning trimmed stdout or None.
+fn git_config_in_dir(dir: &Path, args: &[&str]) -> Option<String> {
+    let mut cmd = Command::new("git");
+    cmd.args(args).current_dir(dir);
+    no_window(&mut cmd);
+    let output = cmd.output().ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let s = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if s.is_empty() { None } else { Some(s) }
+}
 
 #[tauri::command]
 pub fn detect_identities(_app: AppHandle, directory: Option<String>) -> Result<Vec<GitProfile>, String> {
@@ -128,6 +155,10 @@ pub fn detect_identities(_app: AppHandle, directory: Option<String>) -> Result<V
         }
     };
 
+    // Also detect remote.origin.url (best-effort; no fallback to global)
+    let remote_url = run_git(&["config", "--get", "remote.origin.url"]).ok().flatten();
+    let remote_service = remote_url.as_deref().map(detect_remote_service);
+
     // Detect simple SSH key presence in ~/.ssh (look for common private key names)
     let home = env::var("HOME").or_else(|_| env::var("USERPROFILE")).unwrap_or_default();
     let mut ssh_key_path: Option<String> = None;
@@ -171,7 +202,95 @@ pub fn detect_identities(_app: AppHandle, directory: Option<String>) -> Result<V
         ssh_key_path,
         gpg_key_id: if signingkey.is_empty() { None } else { Some(signingkey) },
         is_default: false,
+        remote_url,
+        remote_service,
     };
 
     Ok(vec![profile])
+}
+
+/// Recursively walk `dir` up to `max_depth` levels deep, collecting git repos.
+fn collect_repos(dir: &Path, depth: u32, max_depth: u32, results: &mut Vec<PathBuf>) {
+    if depth > max_depth {
+        return;
+    }
+    // If this directory is itself a git repo, record it and stop recursing.
+    if dir.join(".git").exists() {
+        results.push(dir.to_path_buf());
+        return;
+    }
+    let Ok(entries) = fs::read_dir(dir) else { return };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
+        }
+        let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+        // Skip hidden dirs, large build/dependency dirs
+        if name.starts_with('.') ||
+           name == "node_modules" ||
+           name == "target" ||
+           name == "dist" ||
+           name == "build" ||
+           name == ".git" {
+            continue;
+        }
+        collect_repos(&path, depth + 1, max_depth, results);
+    }
+}
+
+/// Scan `root` recursively (up to `max_depth`, default 5) for git repositories
+/// and return identity + remote information for each one found.
+#[tauri::command]
+pub fn scan_repos(app: AppHandle, root: String, max_depth: Option<u32>) -> Result<Vec<ScannedRepo>, String> {
+    let max_depth = max_depth.unwrap_or(5).min(10);
+    let root_path = Path::new(&root);
+    if !root_path.exists() {
+        return Err(format!("Root path does not exist: {}", root));
+    }
+
+    // Load profiles once for matching
+    let config = crate::config::store::load_config(&app).map_err(|e| e.to_string())?;
+
+    let mut repo_paths: Vec<PathBuf> = Vec::new();
+    collect_repos(root_path, 0, max_depth, &mut repo_paths);
+    // Cap at 200 repos to avoid overwhelming the UI
+    repo_paths.truncate(200);
+
+    let mut repos: Vec<ScannedRepo> = Vec::new();
+    for repo_path in &repo_paths {
+        let user_name  = git_config_in_dir(repo_path, &["config", "--local", "--get", "user.name"]);
+        let user_email = git_config_in_dir(repo_path, &["config", "--local", "--get", "user.email"]);
+        let remote_url = git_config_in_dir(repo_path, &["config", "--get", "remote.origin.url"]);
+        let remote_service = remote_url.as_deref().map(detect_remote_service);
+
+        let name = repo_path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("unknown")
+            .to_string();
+
+        // Find the first GitSwitch profile where name+email match the repo's local identity
+        let matched_profile_id = match (&user_name, &user_email) {
+            (Some(uname), Some(uemail)) => {
+                config.profiles.iter().find(|p| {
+                    p.name.trim().to_lowercase() == uname.trim().to_lowercase()
+                    && p.email.trim().to_lowercase() == uemail.trim().to_lowercase()
+                }).map(|p| p.id.clone())
+            }
+            _ => None,
+        };
+
+        repos.push(ScannedRepo {
+            path: repo_path.to_string_lossy().into_owned(),
+            name,
+            user_name,
+            user_email,
+            remote_url,
+            remote_service,
+            matched_profile_id,
+        });
+    }
+
+    Ok(repos)
 }

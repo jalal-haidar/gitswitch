@@ -1082,3 +1082,119 @@ select::-webkit-menu-list-button {
     animation: none;
   }
 }
+
+/* ─── Light theme ──────────────────────────────────────────────────────────── */
+[data-theme="light"] {
+  --bg-color: #f1f5f9;
+  --surface-color: rgba(255, 255, 255, 0.85);
+  --border-color: rgba(0, 0, 0, 0.08);
+  --text-primary: #1a1d27;
+  --text-secondary: #64748b;
+  --accent-color: #7c3aed;
+  --accent-hover: #6d28d9;
+  --success-color: #059669;
+  --danger-color: #dc2626;
+}
+[data-theme="light"] body {
+  background: radial-gradient(ellipse at top, #ede9fe 0%, #f1f5f9 60%);
+}
+[data-theme="light"] .glass-panel {
+  background: rgba(255, 255, 255, 0.75);
+  backdrop-filter: blur(12px) saturate(1.4);
+  border: 1px solid rgba(0, 0, 0, 0.07);
+  box-shadow: 0 2px 16px rgba(0, 0, 0, 0.06);
+}
+[data-theme="light"] .btn-icon:hover,
+[data-theme="light"] .btn.btn-secondary:hover {
+  background: rgba(0, 0, 0, 0.06);
+}
+[data-theme="light"] input,
+[data-theme="light"] select,
+[data-theme="light"] textarea {
+  background: rgba(0, 0, 0, 0.04);
+  color: var(--text-primary);
+  border-color: rgba(0, 0, 0, 0.12);
+}
+[data-theme="light"] .muted {
+  color: var(--text-secondary);
+}
+
+/* ─── System theme (auto follow OS) ────────────────────────────────────────── */
+@media (prefers-color-scheme: light) {
+  [data-theme="system"] {
+    --bg-color: #f1f5f9;
+    --surface-color: rgba(255, 255, 255, 0.85);
+    --border-color: rgba(0, 0, 0, 0.08);
+    --text-primary: #1a1d27;
+    --text-secondary: #64748b;
+    --accent-hover: #6d28d9;
+    --success-color: #059669;
+    --danger-color: #dc2626;
+  }
+  [data-theme="system"] body {
+    background: radial-gradient(ellipse at top, #ede9fe 0%, #f1f5f9 60%);
+  }
+  [data-theme="system"] .glass-panel {
+    background: rgba(255, 255, 255, 0.75);
+    backdrop-filter: blur(12px) saturate(1.4);
+    border: 1px solid rgba(0, 0, 0, 0.07);
+  }
+  [data-theme="system"] input,
+  [data-theme="system"] select,
+  [data-theme="system"] textarea {
+    background: rgba(0, 0, 0, 0.04);
+    color: var(--text-primary);
+    border-color: rgba(0, 0, 0, 0.12);
+  }
+  [data-theme="system"] .muted {
+    color: var(--text-secondary);
+  }
+}
+
+/* ─── Remote service badge ─────────────────────────────────────────────────── */
+.remote-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+.remote-badge--github {
+  background: rgba(36, 41, 47, 0.18);
+  color: #c9d1d9;
+  border: 1px solid rgba(200, 200, 200, 0.2);
+}
+.remote-badge--gitlab {
+  background: rgba(226, 67, 41, 0.1);
+  color: #fc6d26;
+  border: 1px solid rgba(252, 109, 38, 0.25);
+}
+.remote-badge--bitbucket {
+  background: rgba(0, 82, 204, 0.1);
+  color: #579dff;
+  border: 1px solid rgba(87, 157, 255, 0.25);
+}
+.remote-badge--other {
+  background: rgba(148, 163, 184, 0.1);
+  color: var(--text-secondary);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+/* ─── Theme selector in Settings ───────────────────────────────────────────── */
+.theme-selector {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.theme-btn {
+  min-width: 70px;
+}
+
+/* ─── Per-rule last triggered timestamp ────────────────────────────────────── */
+.rule-last-triggered {
+  font-size: 0.72rem;
+  margin-top: 2px;
+  opacity: 0.75;
+}

@@ -15,6 +15,7 @@ use crate::config::store;
 struct ResolvedRule {
     root_path: PathBuf,
     profile_id: String,
+    rule_id: String,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -191,6 +192,10 @@ fn handle_event(app: &AppHandle, rules: &[ResolvedRule], event: &Event) {
     if let Err(error) = switch_profile_for_repo(app.clone(), match_rule.profile_id.clone(), &match_rule.root_path) {
         eprintln!("[auto-switch] failed to switch profile: {error}");
     } else {
+        let now_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0);
         let event_path = matched_path.to_string_lossy().to_string();
         set_last_auto_switch_event(
             match_rule.profile_id.clone(),
@@ -199,11 +204,15 @@ fn handle_event(app: &AppHandle, rules: &[ResolvedRule], event: &Event) {
         let _ = app.emit("auto-switch-triggered", AutoSwitchEvent {
             profile_id: match_rule.profile_id.clone(),
             path: event_path,
-            occurred_at_epoch_ms: std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_millis() as u64)
-                .unwrap_or(0),
+            occurred_at_epoch_ms: now_ms,
         });
+        // Stamp last_triggered_at on the directory rule that fired
+        if let Ok(mut cfg) = store::load_config(app) {
+            if let Some(rule) = cfg.directory_rules.iter_mut().find(|r| r.id == match_rule.rule_id) {
+                rule.last_triggered_at = Some(now_ms);
+                let _ = store::save_config(app, &cfg);
+            }
+        }
     }
 }
 
@@ -237,6 +246,7 @@ fn build_watcher_and_rules(
         resolved_rules.push(ResolvedRule {
             root_path: normalized,
             profile_id: rule.profile_id.clone(),
+            rule_id: rule.id.clone(),
         });
     }
 

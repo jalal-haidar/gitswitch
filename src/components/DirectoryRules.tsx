@@ -272,11 +272,13 @@ export const DirectoryRulesSection: React.FC = () => {
 
   const handleUpdate = async () => {
     if (!draft.id) return;
+    const existing = directoryRules.find((r) => r.id === draft.id);
     try {
       await updateDirectoryRule({
         id: draft.id,
         path: draft.path.trim(),
         profileId: draft.profileId,
+        lastTriggeredAt: existing?.lastTriggeredAt,
       });
       toast.show({ message: "Directory rule updated", kind: "success" });
       resetEditor();
@@ -390,6 +392,12 @@ export const DirectoryRulesSection: React.FC = () => {
                   <div className="rule-main">
                     <strong>{rule.path}</strong>
                     <div className="muted">Profile: {profileLabel}</div>
+                    {rule.lastTriggeredAt ? (
+                      <div className="muted rule-last-triggered">
+                        Last triggered:{" "}
+                        {new Date(rule.lastTriggeredAt).toLocaleString()}
+                      </div>
+                    ) : null}
                   </div>
                   <div className="rule-actions">
                     <button

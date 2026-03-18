@@ -1,5 +1,13 @@
 import React, { useEffect, useState } from "react";
-import { X, Shield, RefreshCw, Download, Upload, Power } from "lucide-react";
+import {
+  X,
+  Shield,
+  RefreshCw,
+  Download,
+  Upload,
+  Power,
+  Sun,
+} from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import {
   save as saveDialog,
@@ -10,6 +18,9 @@ import { check } from "@tauri-apps/plugin-updater";
 export const Settings: React.FC<{ onClose: () => void }> = ({ onClose }) => {
   const [storeSensitive, setStoreSensitive] = useState(false);
   const [startWithSystem, setStartWithSystem] = useState(false);
+  const [theme, setThemeState] = useState<"system" | "light" | "dark">(
+    "system",
+  );
   const [loading, setLoading] = useState(false);
   const [autostartLoading, setAutostartLoading] = useState(false);
   const [updateLoading, setUpdateLoading] = useState(false);
@@ -32,6 +43,11 @@ export const Settings: React.FC<{ onClose: () => void }> = ({ onClose }) => {
     invoke<boolean>("get_start_with_system")
       .then((v: boolean) => {
         if (mounted) setStartWithSystem(v);
+      })
+      .catch(() => {});
+    invoke<string>("get_theme")
+      .then((v: string) => {
+        if (mounted) setThemeState(v as "system" | "light" | "dark");
       })
       .catch(() => {});
     return () => {
@@ -60,6 +76,16 @@ export const Settings: React.FC<{ onClose: () => void }> = ({ onClose }) => {
       console.error("Failed to toggle autostart:", e);
     } finally {
       setAutostartLoading(false);
+    }
+  };
+
+  const handleThemeChange = async (next: "system" | "light" | "dark") => {
+    try {
+      await invoke("set_theme", { theme: next });
+      setThemeState(next);
+      document.documentElement.setAttribute("data-theme", next);
+    } catch (e) {
+      console.error("Failed to save theme:", e);
     }
   };
 
@@ -196,6 +222,35 @@ export const Settings: React.FC<{ onClose: () => void }> = ({ onClose }) => {
           </label>
           <p className="muted settings-hint">
             App will start automatically when you log in to your computer.
+          </p>
+        </div>
+
+        <div className="settings-divider" />
+
+        <div className="settings-section">
+          <div className="settings-section-title">
+            <Sun size={14} />
+            Theme
+          </div>
+          <div
+            className="theme-selector"
+            role="group"
+            aria-label="Theme selection"
+          >
+            {(["system", "light", "dark"] as const).map((t) => (
+              <button
+                key={t}
+                type="button"
+                className={`btn ${theme === t ? "btn-primary" : "btn-secondary"} theme-btn`}
+                onClick={() => handleThemeChange(t)}
+                aria-pressed={theme === t}
+              >
+                {t.charAt(0).toUpperCase() + t.slice(1)}
+              </button>
+            ))}
+          </div>
+          <p className="muted settings-hint">
+            System follows your OS dark/light preference.
           </p>
         </div>
 

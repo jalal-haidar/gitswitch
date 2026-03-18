@@ -11,6 +11,11 @@ pub struct GitProfile {
     pub ssh_key_path: Option<String>,
     pub gpg_key_id: Option<String>,
     pub is_default: bool,
+    /// Only populated by detect/scan commands — never persisted to profiles.json
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub remote_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub remote_service: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -20,6 +25,25 @@ pub struct DirectoryRule {
     pub id: String,
     pub path: String,
     pub profile_id: String,
+    /// Epoch-ms timestamp of the last auto-switch event for this rule
+    #[serde(default)]
+    pub last_triggered_at: Option<u64>,
+}
+
+/// Returned by `scan_repos` — describes a discovered git repository.
+/// Never written back to profiles.json.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScannedRepo {
+    pub path: String,
+    pub name: String,
+    pub user_name: Option<String>,
+    pub user_email: Option<String>,
+    pub remote_url: Option<String>,
+    /// One of: "github", "gitlab", "bitbucket", "other", or None if no remote
+    pub remote_service: Option<String>,
+    /// ID of the GitSwitch profile whose name+email matches this repo's identity
+    pub matched_profile_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

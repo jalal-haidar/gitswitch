@@ -7,9 +7,12 @@ import {
   Pencil,
   KeyRound,
   Key,
+  Copy,
+  FolderInput,
 } from "lucide-react";
 import { GitProfile, useProfileStore } from "../stores/useProfileStore";
 import { invoke } from "@tauri-apps/api/core";
+import { open as openFolderPicker } from "@tauri-apps/plugin-dialog";
 import { useToast } from "./ui/useToast";
 import ConfirmModal from "./ui/ConfirmModal";
 
@@ -24,12 +27,14 @@ export const ProfileCard: React.FC<ProfileCardProps> = ({
   isActive,
   onEdit,
 }) => {
-  const { deleteProfile, loading } = useProfileStore();
+  const { deleteProfile, addProfile, loading } = useProfileStore();
   const toast = useToast();
   const [confirmOpen, setConfirmOpen] = React.useState(false);
   const [confirmBusy, setConfirmBusy] = React.useState(false);
   const [pendingSnapshot, setPendingSnapshot] = React.useState<any>(null);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = React.useState(false);
+  const [applyBusy, setApplyBusy] = React.useState(false);
+  const [dupBusy, setDupBusy] = React.useState(false);
 
   return (
     <div
@@ -71,6 +76,15 @@ export const ProfileCard: React.FC<ProfileCardProps> = ({
                 title={`GPG key: ${profile.gpgKeyId}`}
               >
                 <Key size={12} /> GPG
+              </span>
+            )}
+            {profile.remoteService && (
+              <span
+                className={`detail-item remote-badge remote-badge--${profile.remoteService}`}
+                title={profile.remoteUrl ?? profile.remoteService}
+              >
+                {profile.remoteService.charAt(0).toUpperCase() +
+                  profile.remoteService.slice(1)}
               </span>
             )}
           </div>
@@ -169,6 +183,75 @@ export const ProfileCard: React.FC<ProfileCardProps> = ({
           aria-label={`Edit ${profile.label}`}
         >
           <Pencil size={16} /> Edit
+        </button>
+        <button
+          className="btn btn-secondary"
+          type="button"
+          disabled={dupBusy || loading}
+          aria-label={`Duplicate ${profile.label}`}
+          title="Duplicate profile"
+          onClick={async () => {
+            setDupBusy(true);
+            try {
+              const {
+                id: _id,
+                isDefault: _def,
+                remoteUrl: _ru,
+                remoteService: _rs,
+                ...rest
+              } = profile;
+              await addProfile({
+                ...rest,
+                label: `Copy of ${profile.label}`,
+                isDefault: false,
+              });
+              toast.show({
+                message: `Duplicated ${profile.label}`,
+                kind: "success",
+              });
+            } catch (e: any) {
+              toast.show({ message: `Duplicate failed: ${e}`, kind: "error" });
+            } finally {
+              setDupBusy(false);
+            }
+          }}
+        >
+          <Copy size={16} /> {dupBusy ? "Copying…" : "Duplicate"}
+        </button>
+        <button
+          className="btn btn-secondary"
+          type="button"
+          disabled={applyBusy}
+          aria-label={`Apply ${profile.label} to a repository`}
+          title="Apply identity to a specific repository"
+          onClick={async () => {
+            setApplyBusy(true);
+            try {
+              const selected = await openFolderPicker({
+                multiple: false,
+                directory: true,
+                title: "Select repository folder",
+              });
+              if (!selected) {
+                setApplyBusy(false);
+                return;
+              }
+              await invoke("apply_profile_to_repo", {
+                profileId: profile.id,
+                repoPath: selected as string,
+              });
+              toast.show({
+                message: `Applied ${profile.label} to repo`,
+                kind: "success",
+              });
+            } catch (e: any) {
+              toast.show({ message: `Apply failed: ${e}`, kind: "error" });
+            } finally {
+              setApplyBusy(false);
+            }
+          }}
+        >
+          <FolderInput size={16} /> {applyBusy ? "Applying…" : "Apply to Repo"}
         </button>
         <button
           className="btn-icon delete-btn"
