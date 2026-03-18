@@ -53,8 +53,10 @@ fn set_last_auto_switch_event(profile_id: String, path: String) {
 
 pub fn start_auto_switch_watcher(app: AppHandle) {
     thread::spawn(move || {
-        if let Err(error) = run_watcher_loop(app) {
+        if let Err(error) = run_watcher_loop(app.clone()) {
             eprintln!("[auto-switch] watcher loop stopped: {error}");
+            // Inform the frontend so it can surface a warning to the user
+            let _ = app.emit("auto-switch-error", error);
         }
     });
 }

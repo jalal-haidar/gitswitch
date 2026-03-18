@@ -12,7 +12,11 @@ import { open as openFolderPicker } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
 import Settings from "./Settings";
 
-import { GitProfile, ScannedRepo, useProfileStore } from "../stores/useProfileStore";
+import {
+  GitProfile,
+  ScannedRepo,
+  useProfileStore,
+} from "../stores/useProfileStore";
 import { useToast } from "./ui/useToast";
 import { normalizeBackendError } from "../utils/error";
 import { ProfileCard } from "./ProfileCard";
@@ -84,6 +88,40 @@ export const Dashboard: React.FC = () => {
     return () => {
       unlisten?.();
     };
+  }, []);
+
+  // Warn when OS keyring write fails — credential stored as plain text fallback
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    const setup = async () => {
+      const { listen } = await import("@tauri-apps/api/event");
+      unlisten = await listen<string>("keyring-warning", (event) => {
+        toastRef.current.show({
+          message: `⚠ Keyring unavailable — ${event.payload}`,
+          kind: "error",
+          duration: 8000,
+        });
+      });
+    };
+    setup();
+    return () => { unlisten?.(); };
+  }, []);
+
+  // Alert when the auto-switch file watcher dies unexpectedly
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    const setup = async () => {
+      const { listen } = await import("@tauri-apps/api/event");
+      unlisten = await listen<string>("auto-switch-error", (event) => {
+        toastRef.current.show({
+          message: `Auto-switch stopped: ${event.payload}. Restart the app to re-enable it.`,
+          kind: "error",
+          duration: 10000,
+        });
+      });
+    };
+    setup();
+    return () => { unlisten?.(); };
   }, []);
 
   useEffect(() => {
@@ -271,7 +309,10 @@ export const Dashboard: React.FC = () => {
       }
       setApplyTargets(targets);
       if (results.length === 0) {
-        toast.show({ message: "No git repos found in that folder.", kind: "success" });
+        toast.show({
+          message: "No git repos found in that folder.",
+          kind: "success",
+        });
       }
     } catch (e: any) {
       toast.show({ message: `Scan failed: ${e}`, kind: "error" });
@@ -286,9 +327,15 @@ export const Dashboard: React.FC = () => {
     setApplyingPath(repoPath);
     try {
       await invoke("apply_profile_to_repo", { profileId, repoPath });
-      const label = profiles.find((p) => p.id === profileId)?.label ?? profileId;
-      const repoName = repoPath.replace(/\\/g, "/").split("/").filter(Boolean).pop() ?? repoPath;
-      toast.show({ message: `Applied "${label}" to ${repoName}`, kind: "success" });
+      const label =
+        profiles.find((p) => p.id === profileId)?.label ?? profileId;
+      const repoName =
+        repoPath.replace(/\\/g, "/").split("/").filter(Boolean).pop() ??
+        repoPath;
+      toast.show({
+        message: `Applied "${label}" to ${repoName}`,
+        kind: "success",
+      });
     } catch (e: any) {
       toast.show({ message: `Apply failed: ${e}`, kind: "error" });
     } finally {
@@ -444,9 +491,14 @@ export const Dashboard: React.FC = () => {
           {scannedRepos.length > 0 && (
             <div className="glass-panel scan-results">
               <div className="scan-count muted">
-                {scannedRepos.length} repo{scannedRepos.length !== 1 ? "s" : ""} found
+                {scannedRepos.length} repo{scannedRepos.length !== 1 ? "s" : ""}{" "}
+                found
               </div>
-              <div className="scan-table" role="table" aria-label="Scanned repositories">
+              <div
+                className="scan-table"
+                role="table"
+                aria-label="Scanned repositories"
+              >
                 <div className="scan-header" role="row" aria-hidden="true">
                   <span>Repository</span>
                   <span>Detected Identity</span>
@@ -482,7 +534,9 @@ export const Dashboard: React.FC = () => {
                         {repo.userName || repo.userEmail ? (
                           <>
                             <span>{repo.userName ?? "–"}</span>
-                            <span className="muted">{repo.userEmail ?? ""}</span>
+                            <span className="muted">
+                              {repo.userEmail ?? ""}
+                            </span>
                             {matchedProfile ? (
                               <span
                                 className="detail-item scan-match-badge"
@@ -495,7 +549,9 @@ export const Dashboard: React.FC = () => {
                                 {matchedProfile.label}
                               </span>
                             ) : (
-                              <span className="muted scan-no-match">No match</span>
+                              <span className="muted scan-no-match">
+                                No match
+                              </span>
                             )}
                           </>
                         ) : (

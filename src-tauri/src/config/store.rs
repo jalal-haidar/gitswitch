@@ -2,11 +2,22 @@ use anyhow::{Context, Result};
 use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 
 use keyring::Entry;
 
 use crate::models::AppConfig;
+
+/// Try a keyring operation; if it fails, emit a "keyring-warning" event to the
+/// frontend so the user is informed their credential is NOT securely stored.
+fn try_keyring<F: FnOnce() -> keyring::Result<()>>(app: &AppHandle, label: &str, op: F) {
+    if let Err(e) = op() {
+        let _ = app.emit(
+            "keyring-warning",
+            format!("Keyring operation failed for '{label}': {e}. The value will be stored in plain text."),
+        );
+    }
+}
 
 const CONFIG_FILE_NAME: &str = "profiles.json";
 
@@ -70,18 +81,23 @@ pub fn save_config(app_handle: &AppHandle, config: &AppConfig) -> Result<()> {
         for profile in &mut config_for_save.profiles {
             if let Some(ref ssh) = profile.ssh_key_path {
                 let key = format!("{}:ssh_key_path", profile.id);
-                let _ = Entry::new("gitswitch", &key).set_password(ssh);
+                let entry = Entry::new("gitswitch", &key);
+                let ssh_val = ssh.clone();
+                try_keyring(app_handle, &key, move || entry.set_password(&ssh_val));
                 profile.ssh_key_path = None;
             }
 
             if let Some(ref gpg) = profile.gpg_key_id {
                 let key = format!("{}:gpg_key_id", profile.id);
-                let _ = Entry::new("gitswitch", &key).set_password(gpg);
+                let entry = Entry::new("gitswitch", &key);
+                let gpg_val = gpg.clone();
+                try_keyring(app_handle, &key, move || entry.set_password(&gpg_val));
                 profile.gpg_key_id = None;
             }
         }
     } else {
-        // If not storing in keyring, ensure any existing keyring entries are removed
+        // If not storing in keyring, silently attempt to clean up any existing
+        // keyring entries (best-effort; failures are harmless here).
         for profile in &mut config_for_save.profiles {
             let key = format!("{}:ssh_key_path", profile.id);
             let _ = Entry::new("gitswitch", &key).delete_password();

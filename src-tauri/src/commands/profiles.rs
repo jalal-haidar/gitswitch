@@ -38,6 +38,27 @@ fn is_plausible_email(email: &str) -> bool {
     false
 }
 
+/// Returns the current user's home directory, first expanding a leading `~`.
+fn resolve_path(raw: &str) -> std::path::PathBuf {
+    if raw.starts_with('~') {
+        let home = std::env::var("USERPROFILE")
+            .or_else(|_| std::env::var("HOME"))
+            .unwrap_or_default();
+        let stripped = raw.trim_start_matches('~').trim_start_matches(['/', '\\']);
+        std::path::Path::new(&home).join(stripped)
+    } else {
+        std::path::PathBuf::from(raw)
+    }
+}
+
+/// Returns the home directory path, or `None` if it cannot be determined.
+fn user_home_dir() -> Option<std::path::PathBuf> {
+    std::env::var("USERPROFILE")
+        .or_else(|_| std::env::var("HOME"))
+        .ok()
+        .map(std::path::PathBuf::from)
+}
+
 fn validate_and_sanitize_profile(p: &mut GitProfile) -> Result<(), String> {
     // Limits chosen conservatively
     p.label = sanitize_string(&p.label, 100);
@@ -46,15 +67,24 @@ fn validate_and_sanitize_profile(p: &mut GitProfile) -> Result<(), String> {
     p.color = sanitize_string(&p.color, 32);
 
     if let Some(ref ssh) = p.ssh_key_path.clone() {
-        let s = sanitize_string(ssh, 1024);
-        if s.is_empty() {
+        let raw = sanitize_string(ssh, 1024);
+        if raw.is_empty() {
             p.ssh_key_path = None;
         } else {
-            // Verify the key file actually exists
-            if !std::path::Path::new(&s).exists() {
-                return Err(format!("SSH key file not found: {}", s));
+            let resolved = resolve_path(&raw);
+            // Security: SSH key must live inside the user's home directory
+            if let Some(home) = user_home_dir() {
+                if !resolved.starts_with(&home) {
+                    return Err(format!(
+                        "SSH key path must be inside your home directory ({})",
+                        home.display()
+                    ));
+                }
             }
-            p.ssh_key_path = Some(s);
+            if !resolved.exists() {
+                return Err(format!("SSH key file not found: {}", resolved.display()));
+            }
+            p.ssh_key_path = Some(resolved.to_string_lossy().into_owned());
         }
     }
 
@@ -388,10 +418,10 @@ pub fn import_profiles(app: AppHandle, path: String) -> Result<ImportResult, Str
     let export: ProfilesExport = serde_json::from_str(&json)
         .map_err(|_| "Invalid or unrecognised export file.".to_string())?;
 
-    if export.version > EXPORT_VERSION {
+    if export.version == 0 || export.version > EXPORT_VERSION {
         return Err(format!(
-            "This export was created with a newer version of GitSwitch (export version {}). Please update the app to import it.",
-            export.version
+            "Unrecognised export version {}. Expected version {}.",
+            export.version, EXPORT_VERSION
         ));
     }
 
