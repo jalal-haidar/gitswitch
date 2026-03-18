@@ -1,5 +1,12 @@
 import React from "react";
-import { User, Mail, Trash2, CheckCircle2, Pencil, KeyRound } from "lucide-react";
+import {
+  User,
+  Mail,
+  Trash2,
+  CheckCircle2,
+  Pencil,
+  KeyRound,
+} from "lucide-react";
 import { GitProfile, useProfileStore } from "../stores/useProfileStore";
 import { invoke } from "@tauri-apps/api/core";
 import { useToast } from "./ui/useToast";
@@ -43,7 +50,10 @@ export const ProfileCard: React.FC<ProfileCardProps> = ({
               <Mail size={12} /> {profile.email}
             </span>
             {profile.sshKeyPath && (
-              <span className="detail-item ssh-badge" title={`SSH key: ${profile.sshKeyPath}`}>
+              <span
+                className="detail-item ssh-badge"
+                title={`SSH key: ${profile.sshKeyPath}`}
+              >
                 <KeyRound size={12} /> SSH
               </span>
             )}

@@ -1,6 +1,15 @@
 use std::path::Path;
 use std::process::Command;
 use std::io::Write;
+
+/// Suppress the CMD console window flicker on Windows when spawning child processes.
+#[cfg(windows)]
+fn no_window(cmd: &mut Command) {
+    use std::os::windows::process::CommandExt;
+    cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+}
+#[cfg(not(windows))]
+fn no_window(_cmd: &mut Command) {}
 use serde::{Serialize, Deserialize};
 use tauri::AppHandle;
 use uuid::Uuid;
@@ -323,6 +332,7 @@ pub struct GitConfigSnapshot {
 fn capture_git_config_value(args: Vec<&str>) -> Result<Option<String>, String> {
     let mut command = Command::new("git");
     command.args(&args);
+    no_window(&mut command);
 
     let output = command.output().map_err(|e| {
         if e.kind() == std::io::ErrorKind::NotFound {
@@ -501,14 +511,15 @@ pub fn test_ssh_connection(key_path: String, host: Option<String>) -> Result<Ssh
         "Git host"
     };
 
-    let output = Command::new("ssh")
-        .args(["-T", "-i", &key_path,
+    let mut ssh_cmd = Command::new("ssh");
+    ssh_cmd.args(["-T", "-i", &key_path,
                "-o", "IdentitiesOnly=yes",
                "-o", "StrictHostKeyChecking=no",
                "-o", "BatchMode=yes",
                "-o", "ConnectTimeout=10",
-               &ssh_host])
-        .output()
+               &ssh_host]);
+    no_window(&mut ssh_cmd);
+    let output = ssh_cmd.output()
         .map_err(|e| {
             if e.kind() == std::io::ErrorKind::NotFound {
                 "ssh executable not found — install OpenSSH or Git for Windows".to_string()
@@ -594,6 +605,7 @@ fn execute_git_command_in_dir(args: Vec<&str>, cwd: Option<&Path>) -> Result<(),
     if let Some(path) = cwd {
         command.current_dir(path);
     }
+    no_window(&mut command);
 
     let output = command.output().map_err(|e| {
         // If git isn't found on PATH, return a helpful BackendError serialized to string

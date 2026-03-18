@@ -62,7 +62,9 @@ export const ProfileEditor: React.FC<ProfileEditorProps> = ({
     initialValue ?? emptyProfile,
   );
   const [touched, setTouched] = useState(false);
-  const [sshTestStatus, setSshTestStatus] = useState<SshTestResult | null>(null);
+  const [sshTestStatus, setSshTestStatus] = useState<SshTestResult | null>(
+    null,
+  );
   const [sshTesting, setSshTesting] = useState(false);
 
   const testSshConnection = async () => {

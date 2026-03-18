@@ -3,6 +3,16 @@ use std::{process::Command, fs, env, path::Path};
 use crate::errors::BackendError;
 use uuid::Uuid;
 
+/// Suppress the CMD console window that briefly flickers on Windows
+/// whenever a child process is spawned. No-op on non-Windows platforms.
+#[cfg(windows)]
+fn no_window(cmd: &mut Command) {
+    use std::os::windows::process::CommandExt;
+    cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+}
+#[cfg(not(windows))]
+fn no_window(_cmd: &mut Command) {}
+
 use crate::models::GitProfile;
 
 #[tauri::command]
@@ -15,7 +25,10 @@ pub fn detect_identities(_app: AppHandle, directory: Option<String>) -> Result<V
 
     // Helper to run git and capture stdout as trimmed string, returning detailed error on failure
     let run_git = |args: &[&str]| -> Result<Option<String>, BackendError> {
-        let output = Command::new("git").args(args).current_dir(path).output().map_err(|e| {
+        let mut cmd = Command::new("git");
+        cmd.args(args).current_dir(path);
+        no_window(&mut cmd);
+        let output = cmd.output().map_err(|e| {
             if e.kind() == std::io::ErrorKind::NotFound {
                 BackendError::git_not_found()
             } else {
