@@ -262,6 +262,8 @@ pub fn scan_repos(app: AppHandle, root: String, max_depth: Option<u32>) -> Resul
         let user_name  = git_config_in_dir(repo_path, &["config", "--local", "--get", "user.name"]);
         let user_email = git_config_in_dir(repo_path, &["config", "--local", "--get", "user.email"]);
         let remote_url = git_config_in_dir(repo_path, &["config", "--get", "remote.origin.url"]);
+        // Capture repo-local core.sshCommand if present so UI can show real per-repo SSH command
+        let core_ssh_cmd = git_config_in_dir(repo_path, &["config", "--local", "--get", "core.sshCommand"]);
         let remote_service = remote_url.as_deref().map(detect_remote_service);
 
         let name = repo_path
@@ -289,6 +291,7 @@ pub fn scan_repos(app: AppHandle, root: String, max_depth: Option<u32>) -> Resul
             remote_url,
             remote_service,
             matched_profile_id,
+            ssh_command: core_ssh_cmd,
         });
     }
 

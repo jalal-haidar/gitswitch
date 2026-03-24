@@ -44,6 +44,25 @@ pub struct ScannedRepo {
     pub remote_service: Option<String>,
     /// ID of the GitSwitch profile whose name+email matches this repo's identity
     pub matched_profile_id: Option<String>,
+    /// Repo-local `core.sshCommand` if configured (optional)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ssh_command: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitConfigSnapshot {
+    pub user_name: Option<String>,
+    pub user_email: Option<String>,
+    pub user_signingkey: Option<String>,
+    pub commit_gpgsign: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub core_ssh_command: Option<String>,
+}
+
+// Add ssh_command to scanned repo so UI can show repo-local core.sshCommand
+impl ScannedRepo {
+    // keep existing struct; helper constructor can be added elsewhere if needed
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

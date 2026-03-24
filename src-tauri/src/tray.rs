@@ -180,14 +180,16 @@ fn on_menu_event(app: &AppHandle, id: &str) {
         "show" => show_main_window(app),
         "quit" => app.exit(0),
         id if id.starts_with("switch-") => {
-            let profile_id = id.strip_prefix("switch-").unwrap().to_string();
-            match crate::commands::profiles::switch_profile_globally(app.clone(), profile_id) {
+            if let Some(s) = id.strip_prefix("switch-") {
+                let profile_id = s.to_string();
+                match crate::commands::profiles::switch_profile_globally(app.clone(), profile_id) {
                 Ok(()) => {
                     refresh_tray(app);
                     // Tell the frontend to re-fetch profiles so UI + title bar update
                     let _ = app.emit("profiles-changed", ());
                 }
                 Err(e) => eprintln!("[tray] switch error: {e}"),
+                }
             }
         }
         _ => {}

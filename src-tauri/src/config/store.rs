@@ -7,6 +7,36 @@ use tauri::{AppHandle, Emitter, Manager};
 use keyring::Entry;
 
 use crate::models::AppConfig;
+use std::collections::HashMap;
+use once_cell::sync::Lazy;
+use std::sync::Mutex;
+use crate::models::GitConfigSnapshot;
+
+// In-memory transient snapshots keyed by repo path. Not persisted to disk.
+static TRANSIENT_SNAPSHOTS: Lazy<Mutex<HashMap<String, GitConfigSnapshot>>> =
+    Lazy::new(|| Mutex::new(HashMap::new()));
+
+pub fn set_transient_snapshot(key: &str, snap: GitConfigSnapshot) {
+    if let Ok(mut m) = TRANSIENT_SNAPSHOTS.lock() {
+        m.insert(key.to_string(), snap);
+    }
+}
+
+pub fn take_transient_snapshot(key: &str) -> Option<GitConfigSnapshot> {
+    if let Ok(mut m) = TRANSIENT_SNAPSHOTS.lock() {
+        m.remove(key)
+    } else {
+        None
+    }
+}
+
+pub fn has_transient_snapshot(key: &str) -> bool {
+    if let Ok(m) = TRANSIENT_SNAPSHOTS.lock() {
+        m.contains_key(key)
+    } else {
+        false
+    }
+}
 
 /// Try a keyring operation; if it fails, emit a "keyring-warning" event to the
 /// frontend so the user is informed their credential is NOT securely stored.

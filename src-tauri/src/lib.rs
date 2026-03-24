@@ -7,7 +7,7 @@ mod tray;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let tauri_app = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
@@ -47,6 +47,8 @@ pub fn run() {
             commands::rules::delete_directory_rule,
             commands::profiles::test_ssh_connection,
             commands::profiles::apply_profile_to_repo,
+            commands::profiles::restore_repo_snapshot,
+            commands::profiles::has_repo_snapshot,
             commands::rules::get_theme,
             commands::rules::set_theme,
             commands::detect::scan_repos,
@@ -55,16 +57,23 @@ pub fn run() {
             // Clicking the X hides the window instead of destroying it.
             // The app keeps running; use "Quit" in the tray menu to exit.
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                window.hide().unwrap();
+                let _ = window.hide();
                 api.prevent_close();
             }
         })
-        .build(tauri::generate_context!())
-        .expect("error while running tauri application")
-        .run(|_app, event| {
-            // Prevent the process from exiting when no windows are visible.
-            if let tauri::RunEvent::ExitRequested { api, .. } = event {
-                api.prevent_exit();
-            }
-        });
+        .build(tauri::generate_context!());
+
+    match tauri_app {
+        Ok(app) => {
+            app.run(|_app, event| {
+                // Prevent the process from exiting when no windows are visible.
+                if let tauri::RunEvent::ExitRequested { api, .. } = event {
+                    api.prevent_exit();
+                }
+            });
+        }
+        Err(e) => {
+            eprintln!("error while running tauri application: {}", e);
+        }
+    }
 }

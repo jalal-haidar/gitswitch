@@ -15,7 +15,7 @@ use tauri::AppHandle;
 use uuid::Uuid;
 
 use crate::config::store;
-use crate::models::GitProfile;
+use crate::models::{GitProfile, GitConfigSnapshot};
 use crate::errors::BackendError;
 
 // Server-side validation/sanitization helpers
@@ -269,6 +269,17 @@ pub fn switch_profile_for_repo(app: AppHandle, id: String, repo_path: &Path) -> 
         .find(|p| p.id == id)
         .ok_or_else(|| "Profile not found".to_string())?;
 
+    // Capture a transient snapshot of repo-local git config before mutating it.
+    let snapshot = GitConfigSnapshot {
+        user_name: capture_git_config_value_in_dir(vec!["config", "--local", "--get", "user.name"], Some(repo_path))?,
+        user_email: capture_git_config_value_in_dir(vec!["config", "--local", "--get", "user.email"], Some(repo_path))?,
+        user_signingkey: capture_git_config_value_in_dir(vec!["config", "--local", "--get", "user.signingkey"], Some(repo_path))?,
+        commit_gpgsign: capture_git_config_value_in_dir(vec!["config", "--local", "--get", "commit.gpgsign"], Some(repo_path))?,
+        core_ssh_command: capture_git_config_value_in_dir(vec!["config", "--local", "--get", "core.sshCommand"], Some(repo_path))?,
+    };
+    // store transient snapshot keyed by repo path (in-memory only)
+    store::set_transient_snapshot(&repo_path.to_string_lossy(), snapshot);
+
     execute_git_command_in_dir(vec!["config", "--local", "user.name", &profile.name], Some(repo_path))?;
     execute_git_command_in_dir(vec!["config", "--local", "user.email", &profile.email], Some(repo_path))?;
 
@@ -357,12 +368,30 @@ pub fn apply_identity(_app: AppHandle, name: String, email: String, gpg_key: Opt
     Ok(())
 }
 
-#[derive(Serialize, Deserialize)]
-pub struct GitConfigSnapshot {
-    pub user_name: Option<String>,
-    pub user_email: Option<String>,
-    pub user_signingkey: Option<String>,
-    pub commit_gpgsign: Option<String>,
+// NOTE: GitConfigSnapshot is defined in `models.rs` and imported above.
+
+fn capture_git_config_value_in_dir(args: Vec<&str>, cwd: Option<&Path>) -> Result<Option<String>, String> {
+    let mut command = Command::new("git");
+    command.args(&args);
+    if let Some(path) = cwd {
+        command.current_dir(path);
+    }
+    no_window(&mut command);
+
+    let output = command.output().map_err(|e| {
+        if e.kind() == std::io::ErrorKind::NotFound {
+            BackendError::git_not_found().to_string()
+        } else {
+            BackendError::io_error(format!("Failed to execute git command: {}", e)).to_string()
+        }
+    })?;
+
+    if !output.status.success() {
+        return Ok(None);
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    Ok(Some(stdout.trim().to_string()))
 }
 
 fn capture_git_config_value(args: Vec<&str>) -> Result<Option<String>, String> {
@@ -469,12 +498,14 @@ pub fn snapshot_global_git_config_inner() -> Result<GitConfigSnapshot, String> {
     let email = capture_git_config_value(vec!["config", "--global", "--get", "user.email"])?;
     let signing = capture_git_config_value(vec!["config", "--global", "--get", "user.signingkey"])?;
     let gpgsign = capture_git_config_value(vec!["config", "--global", "--get", "commit.gpgsign"])?;
+    let core_ssh = capture_git_config_value(vec!["config", "--global", "--get", "core.sshCommand"])?;
 
     Ok(GitConfigSnapshot {
         user_name: name,
         user_email: email,
         user_signingkey: signing,
         commit_gpgsign: gpgsign,
+        core_ssh_command: core_ssh,
     })
 }
 
@@ -542,6 +573,68 @@ pub fn apply_profile_to_repo(app: AppHandle, id: String, repo_path: String) -> R
     let git_root = find_git_root(path)
         .ok_or_else(|| format!("Not a git repository (or any parent directory): {}", repo_path))?;
     switch_profile_for_repo(app, id, &git_root)
+}
+
+#[tauri::command]
+pub fn restore_repo_snapshot(app: AppHandle, repo_path: String) -> Result<(), String> {
+    let path = Path::new(&repo_path);
+    if !path.exists() {
+        return Err(format!("Path does not exist: {}", repo_path));
+    }
+    let git_root = find_git_root(path)
+        .ok_or_else(|| format!("Not a git repository (or any parent directory): {}", repo_path))?;
+
+    // Take the transient snapshot (removes it from the store)
+    let snap_opt = crate::config::store::take_transient_snapshot(&git_root.to_string_lossy());
+    let snapshot = snap_opt.ok_or_else(|| "No transient snapshot found for this repository".to_string())?;
+
+    // Restore fields (set/unset as necessary)
+    if let Some(name) = snapshot.user_name {
+        execute_git_command_in_dir(vec!["config", "--local", "user.name", &name], Some(&git_root))?;
+    } else {
+        execute_git_command_in_dir(vec!["config", "--local", "--unset", "user.name"], Some(&git_root)).ok();
+    }
+
+    if let Some(email) = snapshot.user_email {
+        execute_git_command_in_dir(vec!["config", "--local", "user.email", &email], Some(&git_root))?;
+    } else {
+        execute_git_command_in_dir(vec!["config", "--local", "--unset", "user.email"], Some(&git_root)).ok();
+    }
+
+    if let Some(signing) = snapshot.user_signingkey {
+        if !signing.is_empty() {
+            execute_git_command_in_dir(vec!["config", "--local", "user.signingkey", &signing], Some(&git_root))?;
+            execute_git_command_in_dir(vec!["config", "--local", "commit.gpgsign", "true"], Some(&git_root))?;
+        }
+    } else {
+        execute_git_command_in_dir(vec!["config", "--local", "--unset", "user.signingkey"], Some(&git_root)).ok();
+        execute_git_command_in_dir(vec!["config", "--local", "commit.gpgsign", "false"], Some(&git_root)).ok();
+    }
+
+    if let Some(sshcmd) = snapshot.core_ssh_command {
+        if !sshcmd.is_empty() {
+            execute_git_command_in_dir(vec!["config", "--local", "core.sshCommand", &sshcmd], Some(&git_root))?;
+        } else {
+            execute_git_command_in_dir(vec!["config", "--local", "--unset", "core.sshCommand"], Some(&git_root)).ok();
+        }
+    } else {
+        execute_git_command_in_dir(vec!["config", "--local", "--unset", "core.sshCommand"], Some(&git_root)).ok();
+    }
+
+    crate::tray::refresh_tray(&app);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn has_repo_snapshot(_app: AppHandle, repo_path: String) -> Result<bool, String> {
+    let path = Path::new(&repo_path);
+    if !path.exists() {
+        return Err(format!("Path does not exist: {}", repo_path));
+    }
+    let git_root = find_git_root(path)
+        .ok_or_else(|| format!("Not a git repository (or any parent directory): {}", repo_path))?;
+
+    Ok(crate::config::store::has_transient_snapshot(&git_root.to_string_lossy()))
 }
 
 #[derive(Serialize)]

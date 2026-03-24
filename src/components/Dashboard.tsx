@@ -63,6 +63,9 @@ export const Dashboard: React.FC = () => {
   // Scanner search + pagination
   const [scanSearch, setScanSearch] = useState("");
   const [scanPage, setScanPage] = useState(0);
+  const [scanSnapshots, setScanSnapshots] = useState<Record<string, boolean>>(
+    {},
+  );
 
   useEffect(() => {
     getVersion()
@@ -347,6 +350,17 @@ export const Dashboard: React.FC = () => {
     setScanLoading(true);
     try {
       const results = await scanRepos(root as string);
+      // After scanning repos, query backend for transient snapshot existence per repo
+      const snapshotChecks = await Promise.all(
+        results.map((r) =>
+          invoke<boolean>("has_repo_snapshot", { repoPath: r.path }).then(
+            (b) => ({ path: r.path, has: b }),
+          ),
+        ),
+      );
+      const snapshotsMap: Record<string, boolean> = {};
+      for (const s of snapshotChecks) snapshotsMap[s.path] = s.has;
+      setScanSnapshots(snapshotsMap);
       setScannedRepos(results);
       setScanSearch("");
       setScanPage(0);
@@ -666,6 +680,11 @@ export const Dashboard: React.FC = () => {
                             <span className="muted">
                               {repo.userEmail ?? ""}
                             </span>
+                            {repo.sshCommand && (
+                              <div className="muted scan-ssh-cmd">
+                                SSH cmd: {repo.sshCommand}
+                              </div>
+                            )}
                             {matchedProfile ? (
                               <span
                                 className="detail-item scan-match-badge"
@@ -680,6 +699,21 @@ export const Dashboard: React.FC = () => {
                             ) : (
                               <span className="muted scan-no-match">
                                 No match
+                              </span>
+                            )}
+                            {scanSnapshots[repo.path] && (
+                              <span
+                                className="detail-item snapshot-badge"
+                                style={{
+                                  background: "#2ecc71",
+                                  color: "white",
+                                  padding: "2px 6px",
+                                  borderRadius: 6,
+                                  marginLeft: 8,
+                                  fontSize: 12,
+                                }}
+                              >
+                                Snapshot available
                               </span>
                             )}
                           </>
@@ -713,6 +747,49 @@ export const Dashboard: React.FC = () => {
                           onClick={() => handleApplyToRepo(repo.path)}
                         >
                           {isApplying ? "Applying…" : "Apply"}
+                        </button>
+                        <button
+                          className="btn btn-secondary btn-sm"
+                          type="button"
+                          style={{ marginLeft: 8 }}
+                          disabled={!scanSnapshots[repo.path]}
+                          title={
+                            !scanSnapshots[repo.path]
+                              ? "No snapshot available"
+                              : "Restore repository snapshot"
+                          }
+                          onClick={async () => {
+                            try {
+                              await useProfileStore
+                                .getState()
+                                .restoreRepoSnapshot(repo.path);
+                              toast.show({
+                                message: "Restored repository snapshot",
+                                kind: "success",
+                              });
+                              // refresh snapshot state for this repo
+                              const b = await invoke<boolean>(
+                                "has_repo_snapshot",
+                                { repoPath: repo.path },
+                              );
+                              setScanSnapshots((s) => ({
+                                ...s,
+                                [repo.path]: b,
+                              }));
+                              // refresh scanned repo list UI
+                              setScannedRepos((s) => s.slice());
+                            } catch (err: any) {
+                              const info = normalizeBackendError(
+                                err?.toString?.() ?? err,
+                              );
+                              toast.show({
+                                message: info.message,
+                                kind: "error",
+                              });
+                            }
+                          }}
+                        >
+                          Restore
                         </button>
                       </div>
                     </div>

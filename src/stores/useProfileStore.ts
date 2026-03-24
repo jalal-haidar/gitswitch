@@ -32,6 +32,8 @@ export interface ScannedRepo {
   remoteUrl?: string;
   remoteService?: string;
   matchedProfileId?: string;
+  /** Repo-local core.sshCommand, if configured */
+  sshCommand?: string;
 }
 
 export interface AutoSwitchEvent {
@@ -75,6 +77,7 @@ interface ProfileState {
   getTheme: () => Promise<string>;
   setTheme: (theme: string) => Promise<void>;
   scanRepos: (root: string, maxDepth?: number) => Promise<ScannedRepo[]>;
+  restoreRepoSnapshot: (repoPath: string) => Promise<void>;
 }
 
 export const useProfileStore = create<ProfileState>((set, get) => ({
@@ -297,5 +300,13 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
 
   scanRepos: async (root, maxDepth?) => {
     return invoke<ScannedRepo[]>("scan_repos", { root, maxDepth });
+  },
+  restoreRepoSnapshot: async (repoPath) => {
+    try {
+      await invoke("restore_repo_snapshot", { repoPath });
+    } catch (e: any) {
+      set({ error: e.toString() });
+      throw e;
+    }
   },
 }));
