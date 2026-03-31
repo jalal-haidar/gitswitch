@@ -1335,6 +1335,63 @@ input::placeholder {
   opacity: 0.75;
 }
 
+/* ─── Rule proof panel (Test Rule result) ──────────────────────────────────── */
+.rule-proof-panel {
+  margin-top: 0.5rem;
+  padding: 0.6rem 0.85rem;
+  font-size: 0.82rem;
+  border-left: 3px solid var(--color-primary, #6c63ff);
+}
+.rule-proof-panel.rule-proof-error {
+  border-left-color: var(--color-error, #ef4444);
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+.rule-proof-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.4rem;
+  font-size: 0.8rem;
+}
+.rule-proof-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.rule-proof-list li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.proof-ok {
+  color: #22c55e;
+  flex-shrink: 0;
+}
+.proof-fail {
+  color: #ef4444;
+  flex-shrink: 0;
+}
+.proof-hint {
+  font-size: 0.78rem;
+  opacity: 0.65;
+  margin-left: 4px;
+}
+
+/* Spin animation for loading icon */
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.spin {
+  animation: spin 0.8s linear infinite;
+}
+
 /* ─── Small button variant ──────────────────────────────────────────────────── */
 .btn.btn-sm {
   padding: 4px 10px;
@@ -1360,6 +1417,11 @@ input::placeholder {
 .scan-count {
   font-size: 0.8rem;
   margin-bottom: 0.75rem;
+}
+
+.scan-truncation-hint {
+  color: var(--color-warning, #e2a000);
+  font-size: 0.78rem;
 }
 
 .scan-table {

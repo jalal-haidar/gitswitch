@@ -269,16 +269,19 @@ pub fn switch_profile_for_repo(app: AppHandle, id: String, repo_path: &Path) -> 
         .find(|p| p.id == id)
         .ok_or_else(|| "Profile not found".to_string())?;
 
-    // Capture a transient snapshot of repo-local git config before mutating it.
-    let snapshot = GitConfigSnapshot {
-        user_name: capture_git_config_value_in_dir(vec!["config", "--local", "--get", "user.name"], Some(repo_path))?,
-        user_email: capture_git_config_value_in_dir(vec!["config", "--local", "--get", "user.email"], Some(repo_path))?,
-        user_signingkey: capture_git_config_value_in_dir(vec!["config", "--local", "--get", "user.signingkey"], Some(repo_path))?,
-        commit_gpgsign: capture_git_config_value_in_dir(vec!["config", "--local", "--get", "commit.gpgsign"], Some(repo_path))?,
-        core_ssh_command: capture_git_config_value_in_dir(vec!["config", "--local", "--get", "core.sshCommand"], Some(repo_path))?,
-    };
-    // store transient snapshot keyed by repo path (in-memory only)
-    store::set_transient_snapshot(&repo_path.to_string_lossy(), snapshot);
+    // Capture a transient snapshot of repo-local git config before mutating it —
+    // but only if there isn't already one (preserve the pre-switch baseline so
+    // repeated rapid auto-switches don't wipe out the original values).
+    if !store::has_transient_snapshot(&repo_path.to_string_lossy()) {
+        let snapshot = GitConfigSnapshot {
+            user_name: capture_git_config_value_in_dir(vec!["config", "--local", "--get", "user.name"], Some(repo_path))?,
+            user_email: capture_git_config_value_in_dir(vec!["config", "--local", "--get", "user.email"], Some(repo_path))?,
+            user_signingkey: capture_git_config_value_in_dir(vec!["config", "--local", "--get", "user.signingkey"], Some(repo_path))?,
+            commit_gpgsign: capture_git_config_value_in_dir(vec!["config", "--local", "--get", "commit.gpgsign"], Some(repo_path))?,
+            core_ssh_command: capture_git_config_value_in_dir(vec!["config", "--local", "--get", "core.sshCommand"], Some(repo_path))?,
+        };
+        store::set_transient_snapshot(&repo_path.to_string_lossy(), snapshot);
+    }
 
     execute_git_command_in_dir(vec!["config", "--local", "user.name", &profile.name], Some(repo_path))?;
     execute_git_command_in_dir(vec!["config", "--local", "user.email", &profile.email], Some(repo_path))?;
@@ -549,7 +552,7 @@ pub fn restore_global_git_config_inner(snapshot: GitConfigSnapshot) -> Result<()
 }
 
 /// Walk up from `path` until we find a directory that contains `.git`.
-fn find_git_root(path: &Path) -> Option<std::path::PathBuf> {
+pub(crate) fn find_git_root(path: &Path) -> Option<std::path::PathBuf> {
     let mut current = path.to_path_buf();
     loop {
         if current.join(".git").exists() {
@@ -560,6 +563,53 @@ fn find_git_root(path: &Path) -> Option<std::path::PathBuf> {
             None => return None,
         }
     }
+}
+
+/// Read a single key from a repo's *local* git config. Returns None if unset or on error.
+/// Public so `auto_switch` can use it for the per-repo identity check.
+pub(crate) fn read_local_git_config(repo_path: &Path, key: &str) -> Option<String> {
+    capture_git_config_value_in_dir(
+        vec!["config", "--local", "--get", key],
+        Some(repo_path),
+    )
+    .ok()
+    .flatten()
+}
+
+/// Return value for `get_repo_local_config` — what is actually written
+/// in this repository's `.git/config` right now.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RepoLocalConfig {
+    pub user_name: Option<String>,
+    pub user_email: Option<String>,
+    pub user_signingkey: Option<String>,
+    pub commit_gpgsign: Option<String>,
+    pub core_ssh_command: Option<String>,
+}
+
+/// Tauri command: read the local git config of a repo and return the current values.
+/// Used by the frontend to prove a profile switch actually landed in `.git/config`.
+#[tauri::command]
+pub fn get_repo_local_config(_app: AppHandle, repo_path: String) -> Result<RepoLocalConfig, String> {
+    let path = Path::new(&repo_path);
+    let git_root = find_git_root(path)
+        .ok_or_else(|| format!("Not a git repository: {}", repo_path))?;
+
+    let read = |key: &str| -> Result<Option<String>, String> {
+        capture_git_config_value_in_dir(
+            vec!["config", "--local", "--get", key],
+            Some(&git_root),
+        )
+    };
+
+    Ok(RepoLocalConfig {
+        user_name: read("user.name")?,
+        user_email: read("user.email")?,
+        user_signingkey: read("user.signingkey")?,
+        commit_gpgsign: read("commit.gpgsign")?,
+        core_ssh_command: read("core.sshCommand")?,
+    })
 }
 
 /// Tauri command: apply a profile to a specific repo directory.

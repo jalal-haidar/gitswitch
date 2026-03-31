@@ -42,6 +42,15 @@ export interface AutoSwitchEvent {
   occurredAtEpochMs: number;
 }
 
+/** Current values actually written in a repo's .git/config — proof of a switch. */
+export interface RepoLocalConfig {
+  userName?: string;
+  userEmail?: string;
+  userSigningkey?: string;
+  commitGpgsign?: string;
+  coreSshCommand?: string;
+}
+
 interface ProfileState {
   profiles: GitProfile[];
   directoryRules: DirectoryRule[];
@@ -78,6 +87,7 @@ interface ProfileState {
   setTheme: (theme: string) => Promise<void>;
   scanRepos: (root: string, maxDepth?: number) => Promise<ScannedRepo[]>;
   restoreRepoSnapshot: (repoPath: string) => Promise<void>;
+  getRepoLocalConfig: (repoPath: string) => Promise<RepoLocalConfig>;
 }
 
 export const useProfileStore = create<ProfileState>((set, get) => ({
@@ -286,7 +296,10 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
   },
 
   applyProfileToRepo: async (profileId, repoPath) => {
-    await invoke("apply_profile_to_repo", { profileId, repoPath });
+    await invoke("apply_profile_to_repo", {
+      id: profileId,
+      repo_path: repoPath,
+    });
   },
 
   getTheme: async () => {
@@ -299,14 +312,19 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
   },
 
   scanRepos: async (root, maxDepth?) => {
-    return invoke<ScannedRepo[]>("scan_repos", { root, maxDepth });
+    return invoke<ScannedRepo[]>("scan_repos", { root, max_depth: maxDepth });
   },
   restoreRepoSnapshot: async (repoPath) => {
     try {
-      await invoke("restore_repo_snapshot", { repoPath });
+      await invoke("restore_repo_snapshot", { repo_path: repoPath });
     } catch (e: any) {
       set({ error: e.toString() });
       throw e;
     }
+  },
+  getRepoLocalConfig: async (repoPath) => {
+    return invoke<RepoLocalConfig>("get_repo_local_config", {
+      repo_path: repoPath,
+    });
   },
 }));

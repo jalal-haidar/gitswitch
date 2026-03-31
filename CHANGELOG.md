@@ -3,6 +3,38 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.2.5] - 2026-03-31
+
+### Added
+
+- **Rule proof panel**: clicking "Test Rule" on any directory rule applies the rule's profile to a chosen repo folder and immediately reads back the repo's `.git/config`, showing a per-field ✓/✗ comparison (name, email, signing key, SSH command) as hard proof the switch took effect.
+- **`get_repo_local_config` backend command**: reads `user.name`, `user.email`, `user.signingkey`, and `core.sshCommand` directly from a repo's `.git/config` — no inference, ground-truth proof.
+- **`auto-switch-failed` event**: the backend now emits a structured failure event (with rule path and reason) whenever an automatic profile switch fails; the Directory Rules panel shows a normalized error toast with optional hint text.
+- **Scan cap warning**: when a repo scan returns exactly 200 results (the backend hard cap), an inline warning is shown prompting the user to narrow the root folder.
+- **`has_repo_snapshot` / `restore_repo_snapshot` commands**: expose transient snapshot existence and restore to the frontend for the scan panel's Restore button.
+
+### Fixed
+
+- **Apply / Restore invoke key mismatch**: frontend was sending `{ profileId, repoPath }` but the Rust commands expect `{ id, repo_path }` — Apply and Restore always failed with a missing-key error. Fixed across `Dashboard.tsx`, `ProfileCard.tsx`, and `useProfileStore.ts`.
+- **`scanRepos` depth ignored**: `maxDepth` was sent camelCase; Rust expected `max_depth` — explicit depth was silently ignored, always defaulting to 5. Fixed.
+- **Auto-switch skip guard too broad**: the per-repo switch was skipped whenever the global `active_profile_id` matched, regardless of what was actually in the repo's local `.git/config`. Guard now compares the actual local `user.name`, `user.email`, and `core.sshCommand` against the profile's expected values.
+- **Auto-switch path matching case-insensitive on Windows**: `PathBuf::starts_with` is case-sensitive; rule paths with different casing from the notify event path would never fire. A `path_starts_with_ci` helper now lowercases both sides on Windows.
+- **UNC path prefix (`\\?\`) not stripped**: `fs::canonicalize` on Windows returns `\\?\`-prefixed extended paths; the previous strip used the wrong byte sequence so the prefix leaked through and broke all watched-path comparisons. Fixed to strip the correct 4-char prefix.
+- **Path boundary off-by-one**: string-level `starts_with` caused `C:\work` to match events in `C:\work2`. The boundary check now requires the remainder to be empty or start with a path separator.
+- **Wrong git root passed to auto-switch**: when a rule watches a parent directory (e.g. `C:\projects`), the switch was called against the rule root rather than the actual `.git` root of the file that triggered the event. The event path is now walked upward to find the real git root.
+- **Snapshot overwritten on rapid saves**: each file-save event overwrote the transient snapshot, losing the pre-burst baseline. Snapshot is now captured only once per repo (skipped if one already exists).
+- **Rule path not validated as directory**: `add_directory_rule` and `update_directory_rule` checked `exists()` but not `is_dir()` — a file path passed manually bypassed the folder picker. Both commands now reject non-directory paths.
+- **Auto-switch watcher no restart on channel disconnect**: if the event channel dropped, the watcher thread exited permanently. The watcher loop now restarts with exponential backoff (1 s → 2 s → … capped at 30 s).
+- **Proof panel SSH check presence-only**: the SSH row showed ✓ for any profile with an SSH key, regardless of whether the *correct* key was applied to the repo. Now compares the exact `core.sshCommand` string.
+- **Active profile indicator stale after auto-switch**: the Dashboard's active-profile highlight was not refreshed when `auto-switch-triggered` fired. The listener now also calls `fetchProfiles()`.
+- **`last_triggered_at` save failure silently swallowed**: failures were discarded with `let _`; they now log to stderr for visibility in the Tauri dev console.
+
+### Changed
+
+- **Auto-switch debounce raised from 500 ms to 1500 ms**: IDE "Save All" and `cargo build` produce event bursts longer than 500 ms; the shorter window caused repeated redundant git-config writes.
+- **Longest-prefix best-match uses path component depth**: previously used `OsStr::len()` (byte count), which gave wrong priority for Unicode path segments on Windows. Now uses `components().count()`.
+- **`auto-switch-failed` toasts normalized**: raw backend error strings are now passed through `normalizeBackendError`, giving the user a clean message and optional hint; toast duration extends to 10 s when a hint is present.
+
 ## [0.2.4] - 2026-03-18
 
 ### Added

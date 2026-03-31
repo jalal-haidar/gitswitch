@@ -106,6 +106,9 @@ pub fn add_directory_rule(app: AppHandle, mut rule: DirectoryRule) -> Result<Dir
     if !std::path::Path::new(&path).exists() {
         return Err(format!("Directory does not exist: {}", path));
     }
+    if !std::path::Path::new(&path).is_dir() {
+        return Err(format!("Path is not a directory: {}", path));
+    }
 
     if rule.id.is_empty() {
         rule.id = Uuid::new_v4().to_string();
@@ -147,6 +150,9 @@ pub fn update_directory_rule(app: AppHandle, rule: DirectoryRule) -> Result<Dire
 
     if !std::path::Path::new(&path).exists() {
         return Err(format!("Directory does not exist: {}", path));
+    }
+    if !std::path::Path::new(&path).is_dir() {
+        return Err(format!("Path is not a directory: {}", path));
     }
 
     let mut found = false;

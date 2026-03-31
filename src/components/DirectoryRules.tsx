@@ -1,9 +1,22 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Pencil, Plus, Trash2, FolderOpen } from "lucide-react";
+import {
+  Pencil,
+  Plus,
+  Trash2,
+  FolderOpen,
+  FlaskConical,
+  CheckCircle2,
+  XCircle,
+  Loader2,
+} from "lucide-react";
 import { open as openFolderPicker } from "@tauri-apps/plugin-dialog";
 import { normalizeBackendError } from "../utils/error";
 import { useToast } from "./ui/useToast";
-import { DirectoryRule, useProfileStore } from "../stores/useProfileStore";
+import {
+  DirectoryRule,
+  RepoLocalConfig,
+  useProfileStore,
+} from "../stores/useProfileStore";
 
 interface RuleDraft {
   id?: string;
@@ -166,7 +179,18 @@ export const DirectoryRulesSection: React.FC = () => {
     addDirectoryRule,
     updateDirectoryRule,
     deleteDirectoryRule,
+    getRepoLocalConfig,
+    applyProfileToRepo,
+    fetchProfiles,
   } = useProfileStore();
+
+  // Per-rule test state: ruleId → { loading, result, error }
+  const [testState, setTestState] = useState<
+    Record<
+      string,
+      { loading: boolean; result?: RepoLocalConfig; error?: string }
+    >
+  >({});
 
   const toast = useToast();
   const [showCreate, setShowCreate] = useState(false);
@@ -182,18 +206,31 @@ export const DirectoryRulesSection: React.FC = () => {
     // (replaces the old 3-second setInterval poll)
     fetchLastAutoSwitchEvent().catch(() => undefined);
 
-    let unlisten: (() => void) | undefined;
+    let unlistenSuccess: (() => void) | undefined;
+    let unlistenFailed: (() => void) | undefined;
     const setup = async () => {
       const { listen } = await import("@tauri-apps/api/event");
-      unlisten = await listen("auto-switch-triggered", () => {
+      unlistenSuccess = await listen("auto-switch-triggered", () => {
         fetchLastAutoSwitchEvent().catch(() => undefined);
+        // Also refresh profiles so the active-profile indicator in the
+        // Dashboard reflects the new active_profile_id set by the switch.
+        fetchProfiles().catch(() => undefined);
+      });
+      unlistenFailed = await listen<string>("auto-switch-failed", (event) => {
+        const info = normalizeBackendError(event.payload ?? "");
+        toast.show({
+          message: `Auto-switch failed: ${info.message}`,
+          kind: "error",
+          duration: info.hint ? 10000 : 8000,
+        });
       });
     };
     setup();
     return () => {
-      unlisten?.();
+      unlistenSuccess?.();
+      unlistenFailed?.();
     };
-  }, [fetchLastAutoSwitchEvent]);
+  }, [fetchLastAutoSwitchEvent, toast]);
 
   const profileOptions = useMemo(
     () => profiles.map((p) => ({ id: p.id, label: p.label })),
@@ -454,6 +491,62 @@ export const DirectoryRulesSection: React.FC = () => {
                     <button
                       className="btn btn-secondary"
                       type="button"
+                      title="Apply this rule now and verify what's in the repo's local git config"
+                      disabled={testState[rule.id]?.loading}
+                      onClick={async () => {
+                        setTestState((s) => ({
+                          ...s,
+                          [rule.id]: { loading: true },
+                        }));
+                        try {
+                          // Let user pick a specific repo inside the watched directory
+                          const picked = await openFolderPicker({
+                            multiple: false,
+                            directory: true,
+                            title:
+                              "Pick a repo inside this rule's directory to test",
+                            defaultPath: rule.path,
+                          });
+                          if (!picked) {
+                            setTestState((s) => ({
+                              ...s,
+                              [rule.id]: { loading: false },
+                            }));
+                            return;
+                          }
+                          await applyProfileToRepo(
+                            rule.profileId,
+                            picked as string,
+                          );
+                          const cfg = await getRepoLocalConfig(
+                            picked as string,
+                          );
+                          setTestState((s) => ({
+                            ...s,
+                            [rule.id]: { loading: false, result: cfg },
+                          }));
+                        } catch (err: any) {
+                          const info = normalizeBackendError(
+                            err?.toString?.() ?? err,
+                          );
+                          setTestState((s) => ({
+                            ...s,
+                            [rule.id]: { loading: false, error: info.message },
+                          }));
+                        }
+                      }}
+                      aria-label={`Test rule ${rule.path}`}
+                    >
+                      {testState[rule.id]?.loading ? (
+                        <Loader2 size={14} className="spin" />
+                      ) : (
+                        <FlaskConical size={14} />
+                      )}{" "}
+                      Test
+                    </button>
+                    <button
+                      className="btn btn-secondary"
+                      type="button"
                       onClick={() => startEdit(rule)}
                       aria-label={`Edit rule ${rule.path}`}
                     >
@@ -470,6 +563,124 @@ export const DirectoryRulesSection: React.FC = () => {
                     </button>
                   </div>
                 </div>
+
+                {testState[rule.id]?.result &&
+                  (() => {
+                    const ts = testState[rule.id]!;
+                    const profile = profiles.find(
+                      (p) => p.id === rule.profileId,
+                    );
+                    const cfg = ts.result!;
+                    const check = (actual?: string, expected?: string) =>
+                      actual && expected && actual.trim() === expected.trim();
+                    return (
+                      <div
+                        className="glass-panel rule-proof-panel"
+                        role="status"
+                      >
+                        <div className="rule-proof-header">
+                          <strong>Local git config proof</strong>
+                          <button
+                            className="btn-icon"
+                            type="button"
+                            onClick={() =>
+                              setTestState((s) => {
+                                const next = { ...s };
+                                delete next[rule.id];
+                                return next;
+                              })
+                            }
+                            aria-label="Dismiss proof panel"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                        <ul className="rule-proof-list">
+                          <li>
+                            {check(cfg.userName, profile?.name) ? (
+                              <CheckCircle2 size={14} className="proof-ok" />
+                            ) : (
+                              <XCircle size={14} className="proof-fail" />
+                            )}
+                            <span>
+                              <strong>user.name</strong>:{" "}
+                              {cfg.userName ?? <em>not set</em>}
+                            </span>
+                          </li>
+                          <li>
+                            {check(cfg.userEmail, profile?.email) ? (
+                              <CheckCircle2 size={14} className="proof-ok" />
+                            ) : (
+                              <XCircle size={14} className="proof-fail" />
+                            )}
+                            <span>
+                              <strong>user.email</strong>:{" "}
+                              {cfg.userEmail ?? <em>not set</em>}
+                            </span>
+                          </li>
+                          {(() => {
+                            // Build the exact core.sshCommand string that
+                            // switch_profile_for_repo writes so we can do a
+                            // value-level comparison, not just presence check.
+                            // Format: ssh -i "<path with forward slashes>" -o IdentitiesOnly=yes
+                            const expectedSshCmd = profile?.sshKeyPath
+                              ? `ssh -i "${profile.sshKeyPath.replace(/\\/g, "/")}" -o IdentitiesOnly=yes`
+                              : undefined;
+                            // Profile has no SSH key → repo should have no sshCommand either.
+                            const sshOk = expectedSshCmd
+                              ? cfg.coreSshCommand === expectedSshCmd
+                              : !cfg.coreSshCommand;
+                            return (
+                              <li>
+                                {sshOk ? (
+                                  <CheckCircle2
+                                    size={14}
+                                    className="proof-ok"
+                                  />
+                                ) : (
+                                  <XCircle size={14} className="proof-fail" />
+                                )}
+                                <span>
+                                  <strong>core.sshCommand</strong>:{" "}
+                                  {cfg.coreSshCommand ?? <em>not set</em>}
+                                  {!sshOk && (
+                                    <span className="proof-hint">
+                                      {expectedSshCmd
+                                        ? ` (expected: ${expectedSshCmd})`
+                                        : " (unexpected — profile has no SSH key)"}
+                                    </span>
+                                  )}
+                                </span>
+                              </li>
+                            );
+                          })()}
+                        </ul>
+                      </div>
+                    );
+                  })()}
+                {testState[rule.id]?.error && (
+                  <div
+                    className="glass-panel rule-proof-panel rule-proof-error"
+                    role="alert"
+                  >
+                    <XCircle size={14} className="proof-fail" />{" "}
+                    {testState[rule.id]!.error}
+                    <button
+                      className="btn-icon"
+                      type="button"
+                      onClick={() =>
+                        setTestState((s) => {
+                          const next = { ...s };
+                          delete next[rule.id];
+                          return next;
+                        })
+                      }
+                      aria-label="Dismiss error"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                )}
 
                 {editingId === rule.id && (
                   <RuleEditor

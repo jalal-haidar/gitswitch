@@ -152,14 +152,14 @@ export const Dashboard: React.FC = () => {
     let unlisten: (() => void) | undefined;
     const setup = async () => {
       const { listen } = await import("@tauri-apps/api/event");
-      unlisten = await listen<{ profile_id: string; path: string }>(
+      unlisten = await listen<{ profileId: string; path: string }>(
         "auto-switch-triggered",
         (event) => {
           const state = useProfileStore.getState();
           const profile = state.profiles.find(
-            (p) => p.id === event.payload.profile_id,
+            (p) => p.id === event.payload.profileId,
           );
-          const label = profile?.label ?? event.payload.profile_id;
+          const label = profile?.label ?? event.payload.profileId;
           // Trim path to last 2 segments for readability
           const segments = event.payload.path
             .replace(/\\/g, "/")
@@ -622,6 +622,15 @@ export const Dashboard: React.FC = () => {
                   {filteredScanRepos.length !== scannedRepos.length
                     ? `${filteredScanRepos.length} of ${scannedRepos.length} repos`
                     : `${scannedRepos.length} repo${scannedRepos.length !== 1 ? "s" : ""} found`}
+                  {scannedRepos.length === 200 && (
+                    <span
+                      className="scan-truncation-hint"
+                      title="Results are capped at 200. Scan a narrower folder or reduce max depth."
+                    >
+                      {" "}
+                      · capped at 200 — narrow the root folder to see more
+                    </span>
+                  )}
                 </div>
                 <div className="scan-search-wrap">
                   <Search size={14} className="scan-search-icon" />

@@ -49,6 +49,7 @@ pub fn run() {
             commands::profiles::apply_profile_to_repo,
             commands::profiles::restore_repo_snapshot,
             commands::profiles::has_repo_snapshot,
+            commands::profiles::get_repo_local_config,
             commands::rules::get_theme,
             commands::rules::set_theme,
             commands::detect::scan_repos,
