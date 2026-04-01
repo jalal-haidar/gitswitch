@@ -23,12 +23,13 @@ fn is_plausible_email(email: &str) -> bool {
         return false;
     }
 
-    let parts: Vec<&str> = email.split('@').collect();
-    if parts.len() != 2 {
+    let Some((local, domain)) = email.split_once('@') else {
+        return false;
+    };
+    // Reject multiple @ signs
+    if domain.contains('@') {
         return false;
     }
-
-    let (local, domain) = (parts[0], parts[1]);
 
     // Local part: at least 1 char, no leading/trailing dots, no consecutive dots
     if local.is_empty() || local.starts_with('.') || local.ends_with('.') || local.contains("..") {
@@ -212,7 +213,7 @@ pub fn update_profile(app: AppHandle, profile: GitProfile) -> Result<GitProfile,
     }
     
     if !found {
-        return Err("Profile not found".to_string());
+        return Err(format!("Profile not found: {}", profile.id));
     }
     
     store::save_config(&app, &config).map_err(|e| e.to_string())?;
@@ -232,7 +233,7 @@ pub fn delete_profile(app: AppHandle, id: String) -> Result<(), String> {
     config.profiles.retain(|p| p.id != id);
     
     if config.profiles.len() == initial_len {
-        return Err("Profile not found".to_string());
+        return Err(format!("Profile not found: {id}"));
     }
     
     // If we deleted the default profile, make the first remaining one default (if any)
@@ -253,7 +254,7 @@ pub fn delete_profile(app: AppHandle, id: String) -> Result<(), String> {
 pub fn switch_profile_globally(app: AppHandle, id: String) -> Result<(), String> {
     let mut config = store::load_config(&app).map_err(|e| e.to_string())?;
     let profile = config.profiles.iter().find(|p| p.id == id)
-        .ok_or_else(|| "Profile not found".to_string())?;
+        .ok_or_else(|| format!("Profile not found: {id}"))?;
         
     // Execute git config --global commands
     execute_git_command(vec!["config", "--global", "user.name", &profile.name])?;
@@ -296,7 +297,7 @@ pub fn switch_profile_for_repo(app: AppHandle, id: String, repo_path: &Path) -> 
         .profiles
         .iter()
         .find(|p| p.id == id)
-        .ok_or_else(|| "Profile not found".to_string())?;
+        .ok_or_else(|| format!("Profile not found: {id}"))?;
 
     // Capture a transient snapshot of repo-local git config before mutating it —
     // but only if there isn't already one (preserve the pre-switch baseline so
@@ -358,7 +359,7 @@ pub fn set_active_profile(app: AppHandle, id: String) -> Result<(), String> {
     // ensure profile exists
     let exists = config.profiles.iter().any(|p| p.id == id);
     if !exists {
-        return Err("Profile not found".to_string());
+        return Err(format!("Profile not found: {id}"));
     }
     config.active_profile_id = Some(id);
     store::save_config(&app, &config).map_err(|e| e.to_string())?;
@@ -478,6 +479,8 @@ pub fn export_profiles(app: AppHandle, path: String) -> Result<(), String> {
         .map_err(|e| format!("Could not create file: {e}"))?;
     file.write_all(json.as_bytes())
         .map_err(|e| format!("Write error: {e}"))?;
+    file.sync_all()
+        .map_err(|e| format!("Sync error: {e}"))?;
     Ok(())
 }
 
@@ -592,6 +595,15 @@ pub fn restore_global_git_config_inner(snapshot: GitConfigSnapshot) -> Result<()
     if let Some(gpgsign) = snapshot.commit_gpgsign {
         // attempt to set to the snapshot value (true/false)
         execute_git_command(vec!["config", "--global", "commit.gpgsign", &gpgsign])?;
+    }
+
+    // core.sshCommand
+    if let Some(ssh_cmd) = snapshot.core_ssh_command {
+        if !ssh_cmd.is_empty() {
+            execute_git_command(vec!["config", "--global", "core.sshCommand", &ssh_cmd])?;
+        }
+    } else {
+        execute_git_command(vec!["config", "--global", "--unset", "core.sshCommand"]).ok();
     }
 
     Ok(())

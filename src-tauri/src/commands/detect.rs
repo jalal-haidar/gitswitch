@@ -244,7 +244,6 @@ pub fn scan_repos(app: AppHandle, root: String, max_depth: Option<u32>) -> Resul
     }
 
     // Validate scan root is within the user's home directory to prevent scanning system directories
-    #[cfg(not(windows))]
     {
         let home = env::var("USERPROFILE")
             .or_else(|_| env::var("HOME"))

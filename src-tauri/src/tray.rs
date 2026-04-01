@@ -8,7 +8,9 @@ use crate::config::store;
 /// Parse a hex color string (e.g., "#7C3AED") into RGB components
 fn parse_hex_color(hex: &str) -> (u8, u8, u8) {
     let hex = hex.trim_start_matches('#');
-    if hex.len() == 6 {
+    // Validate all characters are ASCII hex digits to prevent panics on multi-byte UTF-8
+    let valid = hex.len() == 6 && hex.chars().all(|c| c.is_ascii_hexdigit());
+    if valid {
         let r = u8::from_str_radix(&hex[0..2], 16).unwrap_or(124);
         let g = u8::from_str_radix(&hex[2..4], 16).unwrap_or(58);
         let b = u8::from_str_radix(&hex[4..6], 16).unwrap_or(237);

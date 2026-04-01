@@ -166,7 +166,7 @@ pub fn update_directory_rule(app: AppHandle, rule: DirectoryRule) -> Result<Dire
     }
 
     if !found {
-        return Err("Directory rule not found".to_string());
+        return Err(format!("Directory rule not found: {}", rule.id));
     }
 
     store::save_config(&app, &config).map_err(|e| e.to_string())?;
@@ -187,7 +187,7 @@ pub fn delete_directory_rule(app: AppHandle, id: String) -> Result<(), String> {
     config.directory_rules.retain(|r| r.id != id);
 
     if config.directory_rules.len() == before {
-        return Err("Directory rule not found".to_string());
+        return Err(format!("Directory rule not found: {id}"));
     }
 
     store::save_config(&app, &config).map_err(|e| e.to_string())?;
