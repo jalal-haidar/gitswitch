@@ -9,6 +9,7 @@ import {
   Sun,
 } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
+import { friendlyErrorMessage } from "../utils/error";
 import {
   save as saveDialog,
   open as openDialog,
@@ -101,9 +102,7 @@ export const Settings: React.FC<{ onClose: () => void }> = ({ onClose }) => {
       await invoke("export_profiles", { path });
       setExportMsg("Profiles exported successfully.");
     } catch (e) {
-      setExportMsg(
-        `Export failed: ${e instanceof Error ? e.message : String(e)}`,
-      );
+      setExportMsg(`Export failed: ${friendlyErrorMessage(e)}`);
     } finally {
       setExportLoading(false);
     }
@@ -126,9 +125,7 @@ export const Settings: React.FC<{ onClose: () => void }> = ({ onClose }) => {
         `Imported ${result.added} profile(s)${result.skipped ? `, skipped ${result.skipped} duplicate(s)` : "."}`,
       );
     } catch (e) {
-      setImportMsg(
-        `Import failed: ${e instanceof Error ? e.message : String(e)}`,
-      );
+      setImportMsg(`Import failed: ${friendlyErrorMessage(e)}`);
     } finally {
       setImportLoading(false);
     }

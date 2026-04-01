@@ -1,17 +1,8 @@
 use tauri::AppHandle;
 use std::{process::Command, fs, env, path::{Path, PathBuf}};
 use crate::errors::BackendError;
+use crate::git::no_window;
 use uuid::Uuid;
-
-/// Suppress the CMD console window that briefly flickers on Windows
-/// whenever a child process is spawned. No-op on non-Windows platforms.
-#[cfg(windows)]
-fn no_window(cmd: &mut Command) {
-    use std::os::windows::process::CommandExt;
-    cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
-}
-#[cfg(not(windows))]
-fn no_window(_cmd: &mut Command) {}
 
 use crate::models::{GitProfile, ScannedRepo};
 

@@ -90,3 +90,8 @@ export function normalizeBackendError(e: unknown): NormalizedBackendError {
     return fallback;
   }
 }
+
+/** Extract just the user-facing message from any backend error. */
+export function friendlyErrorMessage(e: unknown): string {
+  return normalizeBackendError(e).message;
+}

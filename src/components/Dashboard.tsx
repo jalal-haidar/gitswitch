@@ -19,7 +19,7 @@ import {
   useProfileStore,
 } from "../stores/useProfileStore";
 import { useToast } from "./ui/useToast";
-import { normalizeBackendError } from "../utils/error";
+import { normalizeBackendError, friendlyErrorMessage } from "../utils/error";
 import { ProfileCard } from "./ProfileCard";
 import DetectedProfilesList from "./DetectedProfilesList";
 import ProfileEditor, {
@@ -283,7 +283,7 @@ export const Dashboard: React.FC = () => {
               });
             }).catch((e: any) => {
               toast.show({
-                message: `Duplicate failed: ${normalizeBackendError(e)}`,
+                message: `Duplicate failed: ${friendlyErrorMessage(e)}`,
                 kind: "error",
               });
             });
@@ -441,7 +441,7 @@ export const Dashboard: React.FC = () => {
         });
       }
     } catch (e: any) {
-      toast.show({ message: `Scan failed: ${e}`, kind: "error" });
+      toast.show({ message: `Scan failed: ${friendlyErrorMessage(e)}`, kind: "error" });
     } finally {
       setScanLoading(false);
     }
@@ -463,7 +463,7 @@ export const Dashboard: React.FC = () => {
         kind: "success",
       });
     } catch (e: any) {
-      toast.show({ message: `Apply failed: ${e}`, kind: "error" });
+      toast.show({ message: `Apply failed: ${friendlyErrorMessage(e)}`, kind: "error" });
     } finally {
       setApplyingPath(null);
     }

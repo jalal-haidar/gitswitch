@@ -3,6 +3,7 @@ mod config;
 mod models;
 mod errors;
 mod auto_switch;
+mod git;
 mod tray;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

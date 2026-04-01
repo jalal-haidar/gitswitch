@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Layout } from "./components/Layout";
 import { Dashboard } from "./components/Dashboard";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import "./styles/index.css";
 import { ToastProvider } from "./components/ui/useToast";
 import { Toaster } from "./components/ui/Toaster";
@@ -19,12 +20,14 @@ function App() {
   }, []);
 
   return (
-    <ToastProvider>
-      <Layout>
-        <Dashboard />
-      </Layout>
-      <Toaster />
-    </ToastProvider>
+    <ErrorBoundary>
+      <ToastProvider>
+        <Layout>
+          <Dashboard />
+        </Layout>
+        <Toaster />
+      </ToastProvider>
+    </ErrorBoundary>
   );
 }
 

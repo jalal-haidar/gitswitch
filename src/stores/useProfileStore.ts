@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { invoke } from "@tauri-apps/api/core";
-import { normalizeBackendError } from "../utils/error";
+import { normalizeBackendError, friendlyErrorMessage } from "../utils/error";
 
 export interface GitProfile {
   id: string;
@@ -113,7 +113,7 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
       );
       set({ autoSwitchEnabled, autoSwitchLoading: false });
     } catch (e: any) {
-      set({ rulesError: e.toString(), autoSwitchLoading: false });
+      set({ rulesError: friendlyErrorMessage(e), autoSwitchLoading: false });
       throw e;
     }
   },
@@ -129,7 +129,7 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
       );
       set({ autoSwitchEnabled, autoSwitchLoading: false });
     } catch (e: any) {
-      set({ rulesError: e.toString(), autoSwitchLoading: false });
+      set({ rulesError: friendlyErrorMessage(e), autoSwitchLoading: false });
       throw e;
     }
   },
@@ -154,7 +154,7 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
       ]);
       set({ profiles, activeProfileId, loading: false });
     } catch (e: any) {
-      set({ error: e.toString(), loading: false });
+      set({ error: friendlyErrorMessage(e), loading: false });
     }
   },
 
@@ -168,7 +168,7 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
       set({ loading: false });
       return created;
     } catch (e: any) {
-      set({ error: e.toString(), loading: false });
+      set({ error: friendlyErrorMessage(e), loading: false });
       throw e;
     }
   },
@@ -194,7 +194,7 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
       await get().fetchProfiles();
       set({ loading: false });
     } catch (e: any) {
-      set({ error: e.toString(), loading: false });
+      set({ error: friendlyErrorMessage(e), loading: false });
       throw e;
     }
   },
@@ -206,7 +206,7 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
       await get().fetchProfiles();
       set({ loading: false });
     } catch (e: any) {
-      set({ error: e.toString(), loading: false });
+      set({ error: friendlyErrorMessage(e), loading: false });
       throw e;
     }
   },
@@ -218,7 +218,7 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
       await get().fetchProfiles();
       set({ loading: false });
     } catch (e: any) {
-      set({ error: e.toString(), loading: false });
+      set({ error: friendlyErrorMessage(e), loading: false });
       throw e;
     }
   },
@@ -236,7 +236,7 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
         const info = normalizeBackendError(e?.toString?.() ?? e);
         set({ detectError: info.message, detectLoading: false });
       } catch {
-        set({ detectError: e.toString(), detectLoading: false });
+        set({ detectError: friendlyErrorMessage(e), detectLoading: false });
       }
       // rethrow so callers (components) can display toasts or handle actions
       throw e;
@@ -251,7 +251,7 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
       );
       set({ directoryRules, rulesLoading: false });
     } catch (e: any) {
-      set({ rulesError: e.toString(), rulesLoading: false });
+      set({ rulesError: friendlyErrorMessage(e), rulesLoading: false });
       throw e;
     }
   },
@@ -266,7 +266,7 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
       set({ rulesLoading: false });
       return created;
     } catch (e: any) {
-      set({ rulesError: e.toString(), rulesLoading: false });
+      set({ rulesError: friendlyErrorMessage(e), rulesLoading: false });
       throw e;
     }
   },
@@ -278,7 +278,7 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
       await get().fetchDirectoryRules();
       set({ rulesLoading: false });
     } catch (e: any) {
-      set({ rulesError: e.toString(), rulesLoading: false });
+      set({ rulesError: friendlyErrorMessage(e), rulesLoading: false });
       throw e;
     }
   },
@@ -290,7 +290,7 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
       await get().fetchDirectoryRules();
       set({ rulesLoading: false });
     } catch (e: any) {
-      set({ rulesError: e.toString(), rulesLoading: false });
+      set({ rulesError: friendlyErrorMessage(e), rulesLoading: false });
       throw e;
     }
   },
@@ -318,7 +318,7 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
     try {
       await invoke("restore_repo_snapshot", { repo_path: repoPath });
     } catch (e: any) {
-      set({ error: e.toString() });
+      set({ error: friendlyErrorMessage(e) });
       throw e;
     }
   },

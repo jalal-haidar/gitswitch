@@ -2,14 +2,7 @@ use std::path::Path;
 use std::process::Command;
 use std::io::Write;
 
-/// Suppress the CMD console window flicker on Windows when spawning child processes.
-#[cfg(windows)]
-fn no_window(cmd: &mut Command) {
-    use std::os::windows::process::CommandExt;
-    cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
-}
-#[cfg(not(windows))]
-fn no_window(_cmd: &mut Command) {}
+use crate::git::no_window;
 use serde::{Serialize, Deserialize};
 use tauri::AppHandle;
 use uuid::Uuid;
@@ -131,6 +124,9 @@ fn validate_and_sanitize_profile(p: &mut GitProfile) -> Result<(), String> {
     }
 
     // Basic required fields
+    if p.label.is_empty() {
+        return Err("Profile label must not be empty".to_string());
+    }
     if p.name.is_empty() {
         return Err("Profile name must not be empty".to_string());
     }
@@ -952,5 +948,204 @@ mod tests {
         let snap = snapshot_global_git_config_inner().expect("snapshot failed");
         let res = restore_global_git_config_inner(snap);
         assert!(res.is_ok(), "restore failed: {:?}", res);
+    }
+
+    // ── sanitize_string ──────────────────────────────────────────
+    #[test]
+    fn sanitize_removes_control_chars() {
+        assert_eq!(sanitize_string("hello\x00world", 100), "helloworld");
+        assert_eq!(sanitize_string("ab\x07cd\x1B", 100), "abcd");
+    }
+
+    #[test]
+    fn sanitize_truncates_to_max_len() {
+        assert_eq!(sanitize_string("abcdefgh", 5), "abcde");
+    }
+
+    #[test]
+    fn sanitize_trims_whitespace() {
+        assert_eq!(sanitize_string("  hello  ", 100), "hello");
+    }
+
+    #[test]
+    fn sanitize_empty_input() {
+        assert_eq!(sanitize_string("", 100), "");
+    }
+
+    // ── is_plausible_email ───────────────────────────────────────
+    #[test]
+    fn email_valid_simple() {
+        assert!(is_plausible_email("user@example.com"));
+        assert!(is_plausible_email("first.last@domain.co.uk"));
+        assert!(is_plausible_email("user+tag@example.com"));
+    }
+
+    #[test]
+    fn email_rejects_missing_at() {
+        assert!(!is_plausible_email("userexample.com"));
+    }
+
+    #[test]
+    fn email_rejects_double_at() {
+        assert!(!is_plausible_email("user@@example.com"));
+    }
+
+    #[test]
+    fn email_rejects_leading_dot_local() {
+        assert!(!is_plausible_email(".user@example.com"));
+    }
+
+    #[test]
+    fn email_rejects_trailing_dot_local() {
+        assert!(!is_plausible_email("user.@example.com"));
+    }
+
+    #[test]
+    fn email_rejects_consecutive_dots_local() {
+        assert!(!is_plausible_email("user..name@example.com"));
+    }
+
+    #[test]
+    fn email_rejects_no_dot_in_domain() {
+        assert!(!is_plausible_email("user@localhost"));
+    }
+
+    #[test]
+    fn email_rejects_dot_start_domain() {
+        assert!(!is_plausible_email("user@.example.com"));
+    }
+
+    #[test]
+    fn email_rejects_consecutive_dots_domain() {
+        assert!(!is_plausible_email("user@example..com"));
+    }
+
+    #[test]
+    fn email_rejects_too_short() {
+        assert!(!is_plausible_email("a@b"));
+        assert!(!is_plausible_email(""));
+    }
+
+    #[test]
+    fn email_rejects_too_long() {
+        let long_local = "a".repeat(250);
+        let email = format!("{}@example.com", long_local);
+        assert!(email.len() > 254);
+        assert!(!is_plausible_email(&email));
+    }
+
+    #[test]
+    fn email_rejects_special_chars() {
+        assert!(!is_plausible_email("user name@example.com"));
+        assert!(!is_plausible_email("user<>@example.com"));
+    }
+
+    // ── resolve_path ─────────────────────────────────────────────
+    #[test]
+    fn resolve_path_absolute_unchanged() {
+        let p = resolve_path("/some/path/to/key");
+        assert_eq!(p, std::path::PathBuf::from("/some/path/to/key"));
+    }
+
+    #[test]
+    fn resolve_path_tilde_expands() {
+        let p = resolve_path("~/.ssh/id_ed25519");
+        // Should not still start with ~
+        assert!(!p.to_string_lossy().starts_with('~'));
+        assert!(p.to_string_lossy().contains(".ssh"));
+    }
+
+    // ── validate_and_sanitize_profile ────────────────────────────
+    #[test]
+    fn validate_rejects_empty_label() {
+        let mut profile = GitProfile {
+            id: "test".to_string(),
+            label: "".to_string(),
+            name: "Test".to_string(),
+            email: "test@example.com".to_string(),
+            color: "#FF0000".to_string(),
+            ssh_key_path: None,
+            gpg_key_id: None,
+            is_default: false,
+            remote_url: None,
+            remote_service: None,
+        };
+        let res = validate_and_sanitize_profile(&mut profile);
+        assert!(res.is_err());
+    }
+
+    #[test]
+    fn validate_rejects_bad_email() {
+        let mut profile = GitProfile {
+            id: "test".to_string(),
+            label: "Test".to_string(),
+            name: "Test".to_string(),
+            email: "not-an-email".to_string(),
+            color: "#FF0000".to_string(),
+            ssh_key_path: None,
+            gpg_key_id: None,
+            is_default: false,
+            remote_url: None,
+            remote_service: None,
+        };
+        let res = validate_and_sanitize_profile(&mut profile);
+        assert!(res.is_err());
+    }
+
+    #[test]
+    fn validate_accepts_valid_profile() {
+        let mut profile = GitProfile {
+            id: "test".to_string(),
+            label: "Work".to_string(),
+            name: "John Doe".to_string(),
+            email: "john@work.com".to_string(),
+            color: "#6A5ACD".to_string(),
+            ssh_key_path: None,
+            gpg_key_id: None,
+            is_default: false,
+            remote_url: None,
+            remote_service: None,
+        };
+        let res = validate_and_sanitize_profile(&mut profile);
+        assert!(res.is_ok());
+    }
+
+    #[test]
+    fn validate_sanitizes_long_label() {
+        let long_label = "X".repeat(200);
+        let mut profile = GitProfile {
+            id: "test".to_string(),
+            label: long_label,
+            name: "Test".to_string(),
+            email: "test@example.com".to_string(),
+            color: "#FF0000".to_string(),
+            ssh_key_path: None,
+            gpg_key_id: None,
+            is_default: false,
+            remote_url: None,
+            remote_service: None,
+        };
+        let res = validate_and_sanitize_profile(&mut profile);
+        assert!(res.is_ok());
+        assert_eq!(profile.label.len(), 100);
+    }
+
+    #[test]
+    fn validate_clears_empty_ssh_key() {
+        let mut profile = GitProfile {
+            id: "test".to_string(),
+            label: "Work".to_string(),
+            name: "Test".to_string(),
+            email: "test@example.com".to_string(),
+            color: "#FF0000".to_string(),
+            ssh_key_path: Some("   ".to_string()),
+            gpg_key_id: None,
+            is_default: false,
+            remote_url: None,
+            remote_service: None,
+        };
+        let res = validate_and_sanitize_profile(&mut profile);
+        assert!(res.is_ok());
+        assert!(profile.ssh_key_path.is_none());
     }
 }
