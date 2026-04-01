@@ -138,17 +138,26 @@ pub fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
 
     let config = store::load_config(app.handle()).unwrap_or_default();
     
+    // Compute a safe fallback icon once — avoids unwrap() panics if no default icon is set.
+    // We generate a neutral grey circle rather than using default_window_icon()
+    // because Image::new() borrows and can't produce a 'static lifetime.
+    let fallback_icon: tauri::image::Image<'static> =
+        generate_colored_icon("#6B7280").unwrap_or_else(|| {
+            // 1x1 transparent pixel — absolute last resort so we never panic
+            tauri::image::Image::new(&[0, 0, 0, 0], 1, 1)
+        });
+
     // Get initial icon and tooltip from active profile
     let (initial_icon, initial_tooltip) = if let Some(active_id) = &config.active_profile_id {
         if let Some(p) = config.profiles.iter().find(|p| &p.id == active_id) {
             let icon = generate_colored_icon(&p.color)
-                .unwrap_or_else(|| app.default_window_icon().unwrap().clone());
+                .unwrap_or_else(|| fallback_icon.clone());
             (icon, format!("GitSwitch — {}", p.label))
         } else {
-            (app.default_window_icon().unwrap().clone(), "GitSwitch".to_string())
+            (fallback_icon.clone(), "GitSwitch".to_string())
         }
     } else {
-        (app.default_window_icon().unwrap().clone(), "GitSwitch".to_string())
+        (fallback_icon.clone(), "GitSwitch".to_string())
     };
 
     TrayIconBuilder::with_id("main-tray")

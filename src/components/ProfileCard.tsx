@@ -15,6 +15,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { open as openFolderPicker } from "@tauri-apps/plugin-dialog";
 import { useToast } from "./ui/useToast";
 import ConfirmModal from "./ui/ConfirmModal";
+import { friendlyErrorMessage } from "../utils/error";
 
 interface ProfileCardProps {
   profile: GitProfile;
@@ -114,7 +115,7 @@ export const ProfileCard: React.FC<ProfileCardProps> = ({
                 } catch (e: any) {
                   setConfirmBusy(false);
                   toast.show({
-                    message: `Failed to prepare switch: ${e}`,
+                    message: `Failed to prepare switch: ${friendlyErrorMessage(e)}`,
                     kind: "error",
                   });
                 }
@@ -158,7 +159,7 @@ export const ProfileCard: React.FC<ProfileCardProps> = ({
                             }
                           } catch (err) {
                             toast.show({
-                              message: `Restore failed: ${err}`,
+                              message: `Restore failed: ${friendlyErrorMessage(err)}`,
                               kind: "error",
                             });
                           }
@@ -167,7 +168,7 @@ export const ProfileCard: React.FC<ProfileCardProps> = ({
                     ],
                   });
                 } catch (e: any) {
-                  toast.show({ message: `Switch failed: ${e}`, kind: "error" });
+                  toast.show({ message: `Switch failed: ${friendlyErrorMessage(e)}`, kind: "error" });
                 } finally {
                   setConfirmBusy(false);
                   setConfirmOpen(false);
@@ -211,7 +212,7 @@ export const ProfileCard: React.FC<ProfileCardProps> = ({
                 kind: "success",
               });
             } catch (e: any) {
-              toast.show({ message: `Duplicate failed: ${e}`, kind: "error" });
+              toast.show({ message: `Duplicate failed: ${friendlyErrorMessage(e)}`, kind: "error" });
             } finally {
               setDupBusy(false);
             }
@@ -243,7 +244,7 @@ export const ProfileCard: React.FC<ProfileCardProps> = ({
                 kind: "success",
               });
             } catch (e: any) {
-              toast.show({ message: `Apply failed: ${e}`, kind: "error" });
+              toast.show({ message: `Apply failed: ${friendlyErrorMessage(e)}`, kind: "error" });
             } finally {
               setApplyBusy(false);
             }
@@ -271,9 +272,14 @@ export const ProfileCard: React.FC<ProfileCardProps> = ({
         busy={loading}
         onCancel={() => setDeleteConfirmOpen(false)}
         onConfirm={async () => {
-          await deleteProfile(profile.id);
-          setDeleteConfirmOpen(false);
-          toast.show({ message: `Deleted ${profile.label}`, kind: "success" });
+          try {
+            await deleteProfile(profile.id);
+            setDeleteConfirmOpen(false);
+            toast.show({ message: `Deleted ${profile.label}`, kind: "success" });
+          } catch (e) {
+            setDeleteConfirmOpen(false);
+            toast.show({ message: `Delete failed: ${friendlyErrorMessage(e)}`, kind: "error" });
+          }
         }}
       />
     </div>
