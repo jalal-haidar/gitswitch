@@ -9,6 +9,7 @@ import {
   XCircle,
   Loader2,
   Copy,
+  Clock,
 } from "lucide-react";
 import { open as openFolderPicker } from "@tauri-apps/plugin-dialog";
 import { normalizeBackendError } from "../utils/error";
@@ -392,13 +393,19 @@ export const DirectoryRulesSection: React.FC = () => {
 
       {lastAutoSwitchEvent && (
         <div
-          className="muted rules-last-event"
+          className="glass-panel rules-last-event"
           role="status"
           aria-live="polite"
         >
-          Last auto-switch: {lastEventProfileLabel} at{" "}
-          {lastAutoSwitchEvent.path}
-          {lastEventTime ? ` (${lastEventTime})` : ""}
+          <Clock size={16} className="last-event-icon" />
+          <div>
+            <strong>Last auto-switch:</strong> {lastEventProfileLabel}
+            <br />
+            <span className="muted">
+              {lastAutoSwitchEvent.path}
+              {lastEventTime ? ` • ${lastEventTime}` : ""}
+            </span>
+          </div>
         </div>
       )}
 
