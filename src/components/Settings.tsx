@@ -150,8 +150,7 @@ export const Settings: React.FC<{ onClose: () => void }> = ({ onClose }) => {
       await update.downloadAndInstall();
       setUpdateMessage("Update installed. Please restart the app to apply it.");
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      setUpdateMessage(`Update check failed: ${msg}`);
+      setUpdateMessage(`Update check failed: ${friendlyErrorMessage(e)}`);
     } finally {
       setUpdateLoading(false);
     }

@@ -79,7 +79,6 @@ mod tests {
     fn backend_error_git_not_found_serializes() {
         let e = BackendError::git_not_found();
         let s = e.to_string();
-        // should include kind and hint
         assert!(s.contains("GitNotFound") || s.contains("Git executable not found"));
         assert!(s.contains("git-scm.com") || s.contains("Install Git"));
     }
@@ -90,5 +89,56 @@ mod tests {
         let s = e.to_string();
         assert!(s.contains("PermissionDenied") || s.contains("Permission denied"));
         assert!(s.contains("elevated") || s.contains("permissions"));
+    }
+
+    #[test]
+    fn git_failed_includes_details() {
+        let e = BackendError::git_failed("fatal: not a git repository");
+        let s = e.to_string();
+        assert!(s.contains("GitFailed"));
+        assert!(s.contains("fatal: not a git repository"));
+    }
+
+    #[test]
+    fn io_error_includes_message() {
+        let e = BackendError::io_error("file not found");
+        let s = e.to_string();
+        assert!(s.contains("IoError"));
+        assert!(s.contains("file not found"));
+    }
+
+    #[test]
+    fn with_hint_sets_hint() {
+        let e = BackendError::new(BackendErrorKind::IoError, "something broke")
+            .with_hint("try again later");
+        assert_eq!(e.hint.as_deref(), Some("try again later"));
+    }
+
+    #[test]
+    fn with_details_sets_details() {
+        let e = BackendError::new(BackendErrorKind::GitFailed, "git error")
+            .with_details("stderr output here");
+        assert_eq!(e.details.as_deref(), Some("stderr output here"));
+    }
+
+    #[test]
+    fn display_produces_valid_json() {
+        let e = BackendError::git_not_found();
+        let s = e.to_string();
+        let parsed: serde_json::Value = serde_json::from_str(&s)
+            .expect("Display output should be valid JSON");
+        assert!(parsed.get("kind").is_some());
+        assert!(parsed.get("message").is_some());
+        assert!(parsed.get("hint").is_some());
+    }
+
+    #[test]
+    fn chained_builders() {
+        let e = BackendError::new(BackendErrorKind::IoError, "base message")
+            .with_hint("some hint")
+            .with_details("some details");
+        assert_eq!(e.message, "base message");
+        assert_eq!(e.hint.as_deref(), Some("some hint"));
+        assert_eq!(e.details.as_deref(), Some("some details"));
     }
 }

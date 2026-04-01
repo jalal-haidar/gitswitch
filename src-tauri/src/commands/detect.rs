@@ -309,3 +309,92 @@ pub fn scan_repos(app: AppHandle, root: String, max_depth: Option<u32>) -> Resul
 
     Ok(repos)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── detect_remote_service ────────────────────────────────────
+
+    #[test]
+    fn detects_github_https() {
+        assert_eq!(detect_remote_service("https://github.com/user/repo.git"), "github");
+    }
+
+    #[test]
+    fn detects_github_ssh() {
+        assert_eq!(detect_remote_service("git@github.com:user/repo.git"), "github");
+    }
+
+    #[test]
+    fn detects_gitlab_https() {
+        assert_eq!(detect_remote_service("https://gitlab.com/user/repo.git"), "gitlab");
+    }
+
+    #[test]
+    fn detects_gitlab_self_hosted() {
+        assert_eq!(detect_remote_service("https://gitlab.mycompany.com/user/repo"), "gitlab");
+    }
+
+    #[test]
+    fn detects_bitbucket() {
+        assert_eq!(detect_remote_service("git@bitbucket.org:user/repo.git"), "bitbucket");
+    }
+
+    #[test]
+    fn detects_other_for_unknown() {
+        assert_eq!(detect_remote_service("https://example.com/user/repo.git"), "other");
+    }
+
+    #[test]
+    fn detects_case_insensitive() {
+        assert_eq!(detect_remote_service("https://GITHUB.COM/User/Repo"), "github");
+        assert_eq!(detect_remote_service("https://GITLAB.COM/User/Repo"), "gitlab");
+    }
+
+    // ── collect_repos ────────────────────────────────────────────
+
+    #[test]
+    fn collect_repos_respects_max_depth_zero() {
+        // With depth=0 and max_depth=0 on a non-git directory, should find nothing
+        let tmp = std::env::temp_dir().join("gitswitch_test_collect_repos_depth0");
+        let _ = fs::create_dir_all(&tmp);
+        let mut results = Vec::new();
+        collect_repos(&tmp, 0, 0, &mut results);
+        // Depth 0 just checks the top-level dir; should not recurse into children
+        // The tmp dir itself is not a git repo so results should be empty
+        assert!(results.is_empty());
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn collect_repos_finds_git_dir() {
+        let tmp = std::env::temp_dir().join("gitswitch_test_collect_repos_find");
+        let repo = tmp.join("my_repo");
+        let _ = fs::create_dir_all(repo.join(".git"));
+
+        let mut results = Vec::new();
+        collect_repos(&tmp, 0, 3, &mut results);
+        assert!(!results.is_empty(), "should find the git repo");
+        assert!(results.iter().any(|p| p.ends_with("my_repo")));
+
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn collect_repos_skips_node_modules() {
+        let tmp = std::env::temp_dir().join("gitswitch_test_collect_repos_skip");
+        let nm_repo = tmp.join("node_modules").join("some_pkg");
+        let _ = fs::create_dir_all(nm_repo.join(".git"));
+
+        let mut results = Vec::new();
+        collect_repos(&tmp, 0, 5, &mut results);
+        // The repo inside node_modules should be skipped
+        assert!(
+            !results.iter().any(|p| p.to_string_lossy().contains("node_modules")),
+            "should skip repos inside node_modules"
+        );
+
+        let _ = fs::remove_dir_all(&tmp);
+    }
+}
