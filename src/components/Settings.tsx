@@ -161,6 +161,7 @@ export const Settings: React.FC<{ onClose: () => void }> = ({ onClose }) => {
       className="modal-overlay"
       role="dialog"
       aria-modal="true"
+      aria-labelledby="settings-title"
       onClick={onClose}
     >
       <div
@@ -168,7 +169,7 @@ export const Settings: React.FC<{ onClose: () => void }> = ({ onClose }) => {
         onClick={(e) => e.stopPropagation()}
       >
         <div className="settings-header">
-          <h3>Settings</h3>
+          <h3 id="settings-title">Settings</h3>
           <button
             className="btn-icon"
             onClick={onClose}

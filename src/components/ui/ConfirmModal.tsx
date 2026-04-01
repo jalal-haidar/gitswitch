@@ -47,7 +47,7 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
   if (!open) return null;
 
   return (
-    <div className="modal-overlay" role="dialog" aria-modal="true">
+    <div className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="confirm-modal-title">
       <div className="modal-panel glass-panel">
         <h3 id="confirm-modal-title">{title}</h3>
         {description && <p className="muted" id="confirm-modal-desc">{description}</p>}
