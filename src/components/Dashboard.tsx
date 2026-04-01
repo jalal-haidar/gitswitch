@@ -42,6 +42,7 @@ export const Dashboard: React.FC = () => {
     detectIdentities,
     detectLoading,
     scanRepos,
+    applyProfileToRepo,
   } = useProfileStore();
   const [showCreate, setShowCreate] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -353,7 +354,7 @@ export const Dashboard: React.FC = () => {
       // After scanning repos, query backend for transient snapshot existence per repo
       const snapshotChecks = await Promise.all(
         results.map((r) =>
-          invoke<boolean>("has_repo_snapshot", { repoPath: r.path }).then(
+          invoke<boolean>("has_repo_snapshot", { repo_path: r.path }).then(
             (b) => ({ path: r.path, has: b }),
           ),
         ),
@@ -388,7 +389,7 @@ export const Dashboard: React.FC = () => {
     if (!profileId) return;
     setApplyingPath(repoPath);
     try {
-      await invoke("apply_profile_to_repo", { profileId, repoPath });
+      await applyProfileToRepo(profileId, repoPath);
       const label =
         profiles.find((p) => p.id === profileId)?.label ?? profileId;
       const repoName =
@@ -779,7 +780,7 @@ export const Dashboard: React.FC = () => {
                               // refresh snapshot state for this repo
                               const b = await invoke<boolean>(
                                 "has_repo_snapshot",
-                                { repoPath: repo.path },
+                                { repo_path: repo.path },
                               );
                               setScanSnapshots((s) => ({
                                 ...s,

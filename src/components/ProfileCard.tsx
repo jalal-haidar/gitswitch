@@ -27,7 +27,7 @@ export const ProfileCard: React.FC<ProfileCardProps> = ({
   isActive,
   onEdit,
 }) => {
-  const { deleteProfile, addProfile, loading } = useProfileStore();
+  const { deleteProfile, addProfile, loading, applyProfileToRepo } = useProfileStore();
   const toast = useToast();
   const [confirmOpen, setConfirmOpen] = React.useState(false);
   const [confirmBusy, setConfirmBusy] = React.useState(false);
@@ -236,10 +236,7 @@ export const ProfileCard: React.FC<ProfileCardProps> = ({
                 setApplyBusy(false);
                 return;
               }
-              await invoke("apply_profile_to_repo", {
-                profileId: profile.id,
-                repoPath: selected as string,
-              });
+              await applyProfileToRepo(profile.id, selected as string);
               toast.show({
                 message: `Applied ${profile.label} to repo`,
                 kind: "success",
