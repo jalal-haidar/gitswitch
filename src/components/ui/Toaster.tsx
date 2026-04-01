@@ -1,7 +1,7 @@
 import React, { useEffect } from "react";
 import ReactDOM from "react-dom";
 import { useToast } from "./useToast";
-import { X, CheckCircle, Info } from "lucide-react";
+import { X, CheckCircle2, Info, AlertTriangle } from "lucide-react";
 
 const ToastItem: React.FC<{
   id: string;
@@ -20,11 +20,11 @@ const ToastItem: React.FC<{
     <div className={`toast ${kind} show`} role="status" aria-live="polite">
       <div className="toast-icon">
         {kind === "success" ? (
-          <CheckCircle size={18} />
+          <CheckCircle2 size={20} />
         ) : kind === "error" ? (
-          <X size={18} />
+          <AlertTriangle size={20} />
         ) : (
-          <Info size={18} />
+          <Info size={20} />
         )}
       </div>
       <div className="toast-body">

@@ -475,6 +475,11 @@ h4 {
   gap: var(--card-gap);
   transition: all var(--transition-normal);
   border-left: 4px solid transparent;
+  position: relative;
+}
+
+.profile-card:hover {
+  transform: translateX(2px);
 }
 
 .profile-card.active {
@@ -484,6 +489,12 @@ h4 {
     rgba(16, 185, 129, 0.05) 0%,
     var(--surface-color) 100%
   );
+}
+
+.profile-card.active:hover {
+  box-shadow: 
+    0 8px 32px rgba(0, 0, 0, 0.2),
+    0 0 0 1px rgba(16, 185, 129, 0.15);
 }
 
 .profile-header {
@@ -980,6 +991,13 @@ input::placeholder {
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
+  transition: all var(--transition-fast);
+  cursor: pointer;
+}
+
+.rule-row:hover {
+  transform: translateX(2px);
+  background: rgba(255, 255, 255, 0.02);
 }
 
 .rule-row:focus {
@@ -1382,16 +1400,19 @@ input::placeholder {
   text-align: center;
   gap: 1rem;
   padding: 2.5rem 2rem;
+  animation: fadeIn 400ms ease;
 }
 .welcome-icon {
   width: 72px;
   height: 72px;
   border-radius: 50%;
-  background: rgba(124, 58, 237, 0.12);
+  background: linear-gradient(135deg, rgba(124, 58, 237, 0.15), rgba(139, 92, 246, 0.1));
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--accent);
+  color: var(--accent-color);
+  box-shadow: 0 4px 16px rgba(124, 58, 237, 0.2);
+  animation: scaleIn 500ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 .welcome-panel h3 {
   font-size: 1.25rem;
