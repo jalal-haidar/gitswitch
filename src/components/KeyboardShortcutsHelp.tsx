@@ -5,7 +5,7 @@ interface KeyboardShortcutsHelpProps {
   onClose: () => void;
 }
 
-const KeyboardShortcuts: React.FC<KeyboardShortcutsHelpProps> = ({
+const KeyboardShortcutsHelp: React.FC<KeyboardShortcutsHelpProps> = ({
   onClose,
 }) => {
   const isMac = navigator.platform.toUpperCase().indexOf("MAC") >= 0;
@@ -57,4 +57,4 @@ const KeyboardShortcuts: React.FC<KeyboardShortcutsHelpProps> = ({
   );
 };
 
-export default KeyboardShortcuts;
+export default KeyboardShortcutsHelp;

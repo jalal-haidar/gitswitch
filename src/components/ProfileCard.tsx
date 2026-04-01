@@ -10,7 +10,7 @@ import {
   Copy,
   FolderInput,
 } from "lucide-react";
-import { GitProfile, useProfileStore } from "../stores/useProfileStore";
+import { GitProfile, GitConfigSnapshot, useProfileStore } from "../stores/useProfileStore";
 import { invoke } from "@tauri-apps/api/core";
 import { open as openFolderPicker } from "@tauri-apps/plugin-dialog";
 import { useToast } from "./ui/useToast";
@@ -23,7 +23,7 @@ interface ProfileCardProps {
   onEdit: (profile: GitProfile) => void;
 }
 
-export const ProfileCard: React.FC<ProfileCardProps> = ({
+export const ProfileCard: React.FC<ProfileCardProps> = React.memo(({
   profile,
   isActive,
   onEdit,
@@ -33,7 +33,7 @@ export const ProfileCard: React.FC<ProfileCardProps> = ({
   const toast = useToast();
   const [confirmOpen, setConfirmOpen] = React.useState(false);
   const [confirmBusy, setConfirmBusy] = React.useState(false);
-  const [pendingSnapshot, setPendingSnapshot] = React.useState<Record<string, string> | null>(null);
+  const [pendingSnapshot, setPendingSnapshot] = React.useState<GitConfigSnapshot | null>(null);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = React.useState(false);
   const [applyBusy, setApplyBusy] = React.useState(false);
   const [dupBusy, setDupBusy] = React.useState(false);
@@ -106,7 +106,7 @@ export const ProfileCard: React.FC<ProfileCardProps> = ({
               onClick={async () => {
                 try {
                   setConfirmBusy(true);
-                  const snapshot = await invoke<any>(
+                  const snapshot = await invoke<GitConfigSnapshot>(
                     "snapshot_global_git_config",
                   );
                   setPendingSnapshot(snapshot);
@@ -284,4 +284,4 @@ export const ProfileCard: React.FC<ProfileCardProps> = ({
       />
     </div>
   );
-};
+});

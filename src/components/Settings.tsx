@@ -48,7 +48,8 @@ export const Settings: React.FC<{ onClose: () => void }> = ({ onClose }) => {
       .catch(() => {});
     invoke<string>("get_theme")
       .then((v: string) => {
-        if (mounted) setThemeState(v as "system" | "light" | "dark");
+        const valid = ["system", "light", "dark"] as const;
+        if (mounted && valid.includes(v as typeof valid[number])) setThemeState(v as "system" | "light" | "dark");
       })
       .catch(() => {});
     return () => {

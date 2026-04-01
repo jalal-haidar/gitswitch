@@ -51,6 +51,9 @@ export interface RepoLocalConfig {
   coreSshCommand?: string;
 }
 
+/** Snapshot of the global git config, used for undo after switching. */
+export type GitConfigSnapshot = RepoLocalConfig;
+
 interface ProfileState {
   profiles: GitProfile[];
   directoryRules: DirectoryRule[];
