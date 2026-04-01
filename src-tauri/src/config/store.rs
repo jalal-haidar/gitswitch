@@ -224,3 +224,140 @@ pub fn save_config(app_handle: &AppHandle, config: &AppConfig) -> Result<()> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── normalize_snapshot_key ────────────────────────────────────
+
+    #[test]
+    fn normalize_key_lowercases() {
+        let key = normalize_snapshot_key("C:/Users/Alice/Projects");
+        assert_eq!(key, key.to_lowercase());
+    }
+
+    #[test]
+    fn normalize_key_backslash_to_forward() {
+        // When the path doesn't exist on disk, fallback replaces backslashes
+        let key = normalize_snapshot_key("Z:\\nonexistent\\path\\repo");
+        assert!(!key.contains('\\'), "should not contain backslashes: {}", key);
+        assert!(key.contains("nonexistent"));
+    }
+
+    #[test]
+    fn normalize_key_same_path_different_slashes() {
+        // Both representations of the same non-existent path should produce the same key
+        let a = normalize_snapshot_key("Z:/fake/path/repo");
+        let b = normalize_snapshot_key("Z:\\fake\\path\\repo");
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn normalize_key_same_path_different_case() {
+        let a = normalize_snapshot_key("Z:/FAKE/PATH");
+        let b = normalize_snapshot_key("Z:/fake/path");
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn normalize_key_empty_string() {
+        let key = normalize_snapshot_key("");
+        assert_eq!(key, "");
+    }
+
+    // ── transient snapshots ──────────────────────────────────────
+
+    fn make_snapshot() -> GitConfigSnapshot {
+        GitConfigSnapshot {
+            user_name: Some("Alice".into()),
+            user_email: Some("alice@example.com".into()),
+            user_signingkey: None,
+            commit_gpgsign: None,
+            core_ssh_command: None,
+        }
+    }
+
+    #[test]
+    fn set_and_take_snapshot_roundtrip() {
+        let key = "test_roundtrip_unique_001";
+        let snap = make_snapshot();
+        set_transient_snapshot(key, snap.clone());
+
+        let taken = take_transient_snapshot(key);
+        assert!(taken.is_some());
+        let taken = taken.unwrap();
+        assert_eq!(taken.user_name, snap.user_name);
+        assert_eq!(taken.user_email, snap.user_email);
+    }
+
+    #[test]
+    fn take_removes_snapshot() {
+        let key = "test_take_removes_002";
+        set_transient_snapshot(key, make_snapshot());
+        let _ = take_transient_snapshot(key);
+        assert!(!has_transient_snapshot(key));
+        assert!(take_transient_snapshot(key).is_none());
+    }
+
+    #[test]
+    fn has_snapshot_before_and_after() {
+        let key = "test_has_snapshot_003";
+        // Clear any previous
+        let _ = take_transient_snapshot(key);
+
+        assert!(!has_transient_snapshot(key));
+        set_transient_snapshot(key, make_snapshot());
+        assert!(has_transient_snapshot(key));
+
+        let _ = take_transient_snapshot(key);
+        assert!(!has_transient_snapshot(key));
+    }
+
+    #[test]
+    fn snapshot_key_normalized_across_operations() {
+        // Setting with one slash style, reading with another should find it
+        let key_a = "Z:\\test_norm_match\\repo_004";
+        let key_b = "Z:/test_norm_match/repo_004";
+
+        set_transient_snapshot(key_a, make_snapshot());
+        assert!(has_transient_snapshot(key_b));
+        let taken = take_transient_snapshot(key_b);
+        assert!(taken.is_some());
+    }
+
+    #[test]
+    fn snapshot_key_case_insensitive() {
+        let key_a = "Z:/TEST_CASE/REPO_005";
+        let key_b = "Z:/test_case/repo_005";
+
+        set_transient_snapshot(key_a, make_snapshot());
+        assert!(has_transient_snapshot(key_b));
+        let _ = take_transient_snapshot(key_b);
+    }
+
+    #[test]
+    fn take_nonexistent_returns_none() {
+        let result = take_transient_snapshot("definitely_not_a_real_key_006");
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn overwrite_snapshot_replaces_value() {
+        let key = "test_overwrite_007";
+        set_transient_snapshot(key, make_snapshot());
+
+        let updated = GitConfigSnapshot {
+            user_name: Some("Bob".into()),
+            user_email: Some("bob@example.com".into()),
+            user_signingkey: None,
+            commit_gpgsign: None,
+            core_ssh_command: None,
+        };
+        set_transient_snapshot(key, updated);
+
+        let taken = take_transient_snapshot(key).unwrap();
+        assert_eq!(taken.user_name.as_deref(), Some("Bob"));
+        assert_eq!(taken.user_email.as_deref(), Some("bob@example.com"));
+    }
+}

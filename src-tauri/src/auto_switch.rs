@@ -404,3 +404,158 @@ fn build_signature(config: &crate::models::AppConfig) -> String {
         rules.join(";")
     )
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    // ── should_ignore_path ───────────────────────────────────────
+
+    #[test]
+    fn ignores_node_modules() {
+        assert!(should_ignore_path(Path::new("/project/node_modules/foo/index.js")));
+        assert!(should_ignore_path(Path::new("C:\\project\\node_modules\\bar.js")));
+    }
+
+    #[test]
+    fn ignores_git_objects() {
+        assert!(should_ignore_path(Path::new("/repo/.git/objects/ab/cdef123")));
+        assert!(should_ignore_path(Path::new("/repo/.git/refs/heads/main")));
+        assert!(should_ignore_path(Path::new("/repo/.git/logs/HEAD")));
+    }
+
+    #[test]
+    fn ignores_os_metadata() {
+        assert!(should_ignore_path(Path::new("/project/.DS_Store")));
+        assert!(should_ignore_path(Path::new("C:\\project\\Thumbs.db")));
+        assert!(should_ignore_path(Path::new("C:\\project\\desktop.ini")));
+    }
+
+    #[test]
+    fn ignores_temp_and_swap_files() {
+        assert!(should_ignore_path(Path::new("/project/file.tmp")));
+        assert!(should_ignore_path(Path::new("/project/.file.swp")));
+        assert!(should_ignore_path(Path::new("/project/file.lock")));
+        assert!(should_ignore_path(Path::new("/project/file.bak")));
+        assert!(should_ignore_path(Path::new("/project/file~")));
+    }
+
+    #[test]
+    fn allows_normal_source_files() {
+        assert!(!should_ignore_path(Path::new("/project/src/main.rs")));
+        assert!(!should_ignore_path(Path::new("/project/README.md")));
+        assert!(!should_ignore_path(Path::new("C:\\project\\src\\App.tsx")));
+    }
+
+    #[test]
+    fn allows_git_head_and_commit_msg() {
+        // COMMIT_EDITMSG and HEAD at top level of .git should NOT be ignored
+        assert!(!should_ignore_path(Path::new("/repo/.git/COMMIT_EDITMSG")));
+        assert!(!should_ignore_path(Path::new("/repo/.git/HEAD")));
+    }
+
+    // ── path_starts_with_ci ──────────────────────────────────────
+
+    #[test]
+    fn prefix_exact_match() {
+        let path = PathBuf::from("C:\\work\\project");
+        let prefix = PathBuf::from("C:\\work\\project");
+        assert!(path_starts_with_ci(&path, &prefix));
+    }
+
+    #[test]
+    fn prefix_child_path() {
+        let path = PathBuf::from("C:\\work\\project\\src\\main.rs");
+        let prefix = PathBuf::from("C:\\work\\project");
+        assert!(path_starts_with_ci(&path, &prefix));
+    }
+
+    #[test]
+    fn prefix_rejects_partial_dir_name() {
+        // C:\work should NOT match C:\work2
+        let path = PathBuf::from("C:\\work2\\file.rs");
+        let prefix = PathBuf::from("C:\\work");
+        assert!(!path_starts_with_ci(&path, &prefix));
+    }
+
+    #[test]
+    fn prefix_case_insensitive_on_windows() {
+        let path = PathBuf::from("C:\\WORK\\PROJECT\\file.rs");
+        let prefix = PathBuf::from("c:\\work\\project");
+        #[cfg(windows)]
+        assert!(path_starts_with_ci(&path, &prefix));
+        #[cfg(not(windows))]
+        {
+            // On non-Windows, paths are case-sensitive
+            let _ = (path, prefix);
+        }
+    }
+
+    // ── build_signature ──────────────────────────────────────────
+
+    #[test]
+    fn signature_changes_with_auto_switch_toggle() {
+        let mut config = crate::models::AppConfig::default();
+        config.settings.auto_switch = true;
+        let sig_a = build_signature(&config);
+
+        config.settings.auto_switch = false;
+        let sig_b = build_signature(&config);
+
+        assert_ne!(sig_a, sig_b);
+    }
+
+    #[test]
+    fn signature_changes_with_rules() {
+        let mut config = crate::models::AppConfig::default();
+        let sig_a = build_signature(&config);
+
+        config.directory_rules.push(crate::models::DirectoryRule {
+            id: "r1".into(),
+            path: "/projects/work".into(),
+            profile_id: "p1".into(),
+            last_triggered_at: None,
+        });
+        let sig_b = build_signature(&config);
+
+        assert_ne!(sig_a, sig_b);
+    }
+
+    #[test]
+    fn signature_stable_regardless_of_rule_order() {
+        let mut config = crate::models::AppConfig::default();
+        config.directory_rules.push(crate::models::DirectoryRule {
+            id: "r1".into(),
+            path: "/a".into(),
+            profile_id: "p1".into(),
+            last_triggered_at: None,
+        });
+        config.directory_rules.push(crate::models::DirectoryRule {
+            id: "r2".into(),
+            path: "/b".into(),
+            profile_id: "p2".into(),
+            last_triggered_at: None,
+        });
+        let sig_a = build_signature(&config);
+
+        // Reverse the order
+        config.directory_rules.reverse();
+        let sig_b = build_signature(&config);
+
+        assert_eq!(sig_a, sig_b, "signature should be stable regardless of rule order");
+    }
+
+    // ── last event store ─────────────────────────────────────────
+
+    #[test]
+    fn last_event_roundtrip() {
+        set_last_auto_switch_event("profile-test-001".into(), "/test/path".into());
+        let event = get_last_auto_switch_event();
+        assert!(event.is_some());
+        let event = event.unwrap();
+        assert_eq!(event.profile_id, "profile-test-001");
+        assert_eq!(event.path, "/test/path");
+        assert!(event.occurred_at_epoch_ms > 0);
+    }
+}
