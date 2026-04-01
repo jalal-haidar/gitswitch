@@ -3,6 +3,28 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.2.6] - 2026-04-01
+
+### Added
+
+- Expanded automated coverage across frontend and backend, including new tests for `ErrorBoundary`, keyboard shortcuts, layout/skeleton UI, toast state, profile editor mapping, tray hex-colour parsing, and email validation edge cases.
+- Added regression tests for multi-byte UTF-8 and emoji colour inputs to ensure tray colour parsing never panics on malformed or hand-edited profile values.
+
+### Changed
+
+- Standardized frontend typing further by introducing a dedicated `GitConfigSnapshot` type alias and removing the last `invoke<any>` call.
+- Memoized `ProfileCard` with `React.memo` and aligned the `KeyboardShortcutsHelp` component name with its filename for cleaner component identity and render behavior.
+- Cleaned up remaining Rust lint issues so `cargo clippy` runs without warnings.
+
+### Fixed
+
+- Restored the release version from the accidental `0.3.0` bump to the intended patch release `0.2.6` across app manifests.
+- Hardened tray icon colour parsing to reject non-hex and non-ASCII input safely instead of risking byte-slice panics.
+- Enabled the repo scan home-directory safety guard on Windows as well as other platforms.
+- Fixed global Git config undo so `core.sshCommand` is restored along with name, email, signing key, and `commit.gpgsign`.
+- Made profile export writes more durable by flushing data to disk with `sync_all()` before returning success.
+- Improved backend error messages by including missing entity IDs in profile and directory-rule lookup failures.
+
 ## [0.2.5] - 2026-03-31
 
 ### Added
