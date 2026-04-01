@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { invoke } from "@tauri-apps/api/core";
-import { normalizeBackendError, friendlyErrorMessage } from "../utils/error";
+import { friendlyErrorMessage } from "../utils/error";
 
 export interface GitProfile {
   id: string;
@@ -230,14 +230,8 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
         directory,
       });
       set({ detectedProfiles: detected, detectLoading: false });
-    } catch (e: any) {
-      // Normalize backend structured errors to user-friendly messages
-      try {
-        const info = normalizeBackendError(e?.toString?.() ?? e);
-        set({ detectError: info.message, detectLoading: false });
-      } catch {
-        set({ detectError: friendlyErrorMessage(e), detectLoading: false });
-      }
+    } catch (e) {
+      set({ detectError: friendlyErrorMessage(e), detectLoading: false });
       // rethrow so callers (components) can display toasts or handle actions
       throw e;
     }

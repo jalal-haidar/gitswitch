@@ -364,9 +364,8 @@ export const Dashboard: React.FC = () => {
       });
       setShowCreate(false);
       toast.show({ message: `Created ${value.label}`, kind: "success" });
-    } catch (e: any) {
-      const info = normalizeBackendError(e?.toString?.() ?? e);
-      toast.show({ message: info.message, kind: "error" });
+    } catch (e) {
+      toast.show({ message: friendlyErrorMessage(e), kind: "error" });
     }
   };
 
@@ -385,17 +384,16 @@ export const Dashboard: React.FC = () => {
       });
       setEditingId(null);
       toast.show({ message: `Updated ${value.label}`, kind: "success" });
-    } catch (e: any) {
-      const info = normalizeBackendError(e?.toString?.() ?? e);
-      toast.show({ message: info.message, kind: "error" });
+    } catch (e) {
+      toast.show({ message: friendlyErrorMessage(e), kind: "error" });
     }
   };
 
   const handleDetectClick = async () => {
     try {
       await detectIdentities();
-    } catch (e: any) {
-      const info = normalizeBackendError(e?.toString?.() ?? e);
+    } catch (e) {
+      const info = normalizeBackendError(e);
       toast.show({
         message: info.message,
         kind: "error",
@@ -405,11 +403,16 @@ export const Dashboard: React.FC = () => {
   };
 
   const handleScanRepos = async () => {
-    const root = await openFolderPicker({
-      multiple: false,
-      directory: true,
-      title: "Select root folder to scan for git repos",
-    });
+    let root: string | null;
+    try {
+      root = await openFolderPicker({
+        multiple: false,
+        directory: true,
+        title: "Select root folder to scan for git repos",
+      }) as string | null;
+    } catch {
+      return;
+    }
     if (!root) return;
     setScanLoading(true);
     try {
@@ -861,12 +864,9 @@ export const Dashboard: React.FC = () => {
                               }));
                               // refresh scanned repo list UI
                               setScannedRepos((s) => s.slice());
-                            } catch (err: any) {
-                              const info = normalizeBackendError(
-                                err?.toString?.() ?? err,
-                              );
+                            } catch (err) {
                               toast.show({
-                                message: info.message,
+                                message: friendlyErrorMessage(err),
                                 kind: "error",
                               });
                             }

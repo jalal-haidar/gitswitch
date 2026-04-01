@@ -12,7 +12,7 @@ function App() {
     // Apply the saved theme as a data-theme attribute on the document root
     invoke<string>("get_theme")
       .then((theme) => {
-        document.documentElement.setAttribute("data-theme", theme ?? "system");
+        document.documentElement.setAttribute("data-theme", theme || "system");
       })
       .catch(() => {
         document.documentElement.setAttribute("data-theme", "system");

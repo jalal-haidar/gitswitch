@@ -12,7 +12,7 @@ import {
   Clock,
 } from "lucide-react";
 import { open as openFolderPicker } from "@tauri-apps/plugin-dialog";
-import { normalizeBackendError } from "../utils/error";
+import { normalizeBackendError, friendlyErrorMessage } from "../utils/error";
 import { useToast } from "./ui/useToast";
 import {
   DirectoryRule,
@@ -98,14 +98,18 @@ const RuleEditor: React.FC<{
               className="btn btn-secondary btn-browse"
               title="Browse for directory"
               onClick={async () => {
-                const selected = await openFolderPicker({
-                  multiple: false,
-                  directory: true,
-                  title: "Select Directory",
-                });
-                if (selected) {
-                  setTouchedPath(true);
-                  onChange({ ...value, path: selected as string });
+                try {
+                  const selected = await openFolderPicker({
+                    multiple: false,
+                    directory: true,
+                    title: "Select Directory",
+                  });
+                  if (selected) {
+                    setTouchedPath(true);
+                    onChange({ ...value, path: selected as string });
+                  }
+                } catch {
+                  // Dialog plugin failure — silently ignore
                 }
               }}
             >
@@ -230,7 +234,7 @@ export const DirectoryRulesSection: React.FC = () => {
         });
       });
     };
-    setup();
+    setup().catch(() => undefined);
     return () => {
       unlistenSuccess?.();
       unlistenFailed?.();
@@ -281,9 +285,8 @@ export const DirectoryRulesSection: React.FC = () => {
         message: enabled ? "Auto-switch enabled" : "Auto-switch disabled",
         kind: "success",
       });
-    } catch (e: any) {
-      const info = normalizeBackendError(e?.toString?.() ?? e);
-      toast.show({ message: info.message, kind: "error" });
+    } catch (e) {
+      toast.show({ message: friendlyErrorMessage(e), kind: "error" });
     }
   };
 
@@ -313,9 +316,8 @@ export const DirectoryRulesSection: React.FC = () => {
       });
       toast.show({ message: "Directory rule added", kind: "success" });
       resetEditor();
-    } catch (e: any) {
-      const info = normalizeBackendError(e?.toString?.() ?? e);
-      toast.show({ message: info.message, kind: "error" });
+    } catch (e) {
+      toast.show({ message: friendlyErrorMessage(e), kind: "error" });
     }
   };
 
@@ -331,9 +333,8 @@ export const DirectoryRulesSection: React.FC = () => {
       });
       toast.show({ message: "Directory rule updated", kind: "success" });
       resetEditor();
-    } catch (e: any) {
-      const info = normalizeBackendError(e?.toString?.() ?? e);
-      toast.show({ message: info.message, kind: "error" });
+    } catch (e) {
+      toast.show({ message: friendlyErrorMessage(e), kind: "error" });
     }
   };
 
@@ -345,9 +346,8 @@ export const DirectoryRulesSection: React.FC = () => {
         resetEditor();
       }
       setDeleteConfirmId(null);
-    } catch (e: any) {
-      const info = normalizeBackendError(e?.toString?.() ?? e);
-      toast.show({ message: info.message, kind: "error" });
+    } catch (e) {
+      toast.show({ message: friendlyErrorMessage(e), kind: "error" });
     }
   };
 

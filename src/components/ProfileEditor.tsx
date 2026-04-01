@@ -3,6 +3,7 @@ import { open as openFilePicker } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
 import type { GitProfile } from "../stores/useProfileStore";
 import { isPlausibleEmail, isPlausibleGpgKeyId, LIMITS } from "../utils/validation";
+import { friendlyErrorMessage } from "../utils/error";
 
 const HelpTooltip: React.FC<{ text: string }> = ({ text }) => (
   <span className="help-tooltip" aria-label={text} tabIndex={0}>
@@ -88,7 +89,7 @@ export const ProfileEditor: React.FC<ProfileEditorProps> = ({
       });
       setSshTestStatus(result);
     } catch (e: any) {
-      setSshTestStatus({ success: false, username: null, message: String(e) });
+      setSshTestStatus({ success: false, username: null, message: friendlyErrorMessage(e) });
     } finally {
       setSshTesting(false);
     }
@@ -240,13 +241,17 @@ export const ProfileEditor: React.FC<ProfileEditorProps> = ({
               className="btn btn-secondary btn-browse"
               title="Browse for SSH key file"
               onClick={async () => {
-                const selected = await openFilePicker({
-                  multiple: false,
-                  title: "Select SSH Key",
-                });
-                if (selected) {
-                  setField("sshKeyPath", selected as string);
-                  setSshTestStatus(null);
+                try {
+                  const selected = await openFilePicker({
+                    multiple: false,
+                    title: "Select SSH Key",
+                  });
+                  if (selected) {
+                    setField("sshKeyPath", selected as string);
+                    setSshTestStatus(null);
+                  }
+                } catch {
+                  setSshTestStatus({ success: false, username: null, message: "Failed to open file picker" });
                 }
               }}
             >
