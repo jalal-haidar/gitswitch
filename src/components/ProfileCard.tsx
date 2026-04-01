@@ -27,7 +27,8 @@ export const ProfileCard: React.FC<ProfileCardProps> = ({
   isActive,
   onEdit,
 }) => {
-  const { deleteProfile, addProfile, loading, applyProfileToRepo } = useProfileStore();
+  const { deleteProfile, addProfile, loading, applyProfileToRepo } =
+    useProfileStore();
   const toast = useToast();
   const [confirmOpen, setConfirmOpen] = React.useState(false);
   const [confirmBusy, setConfirmBusy] = React.useState(false);

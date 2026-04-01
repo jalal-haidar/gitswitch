@@ -138,20 +138,32 @@ export const ProfileEditor: React.FC<ProfileEditorProps> = ({
           <input
             id="profile-label"
             aria-label="Profile label"
+            aria-invalid={touched && !value.label.trim()}
             value={value.label}
             onChange={(event) => setField("label", event.target.value)}
             placeholder="Work"
           />
+          {touched && !value.label.trim() && (
+            <span className="field-error" role="alert">
+              Label is required
+            </span>
+          )}
         </label>
         <label className="field-group" htmlFor="profile-name">
           <span>Name</span>
           <input
             id="profile-name"
             aria-label="Full name"
+            aria-invalid={touched && !value.name.trim()}
             value={value.name}
             onChange={(event) => setField("name", event.target.value)}
             placeholder="Jane Doe"
           />
+          {touched && !value.name.trim() && (
+            <span className="field-error" role="alert">
+              Name is required
+            </span>
+          )}
         </label>
         <label className="field-group" htmlFor="profile-email">
           <span>Email</span>
@@ -159,11 +171,27 @@ export const ProfileEditor: React.FC<ProfileEditorProps> = ({
             id="profile-email"
             aria-label="Email address"
             aria-required="true"
+            aria-invalid={touched && (!value.email.trim() || !emailValid)}
             value={value.email}
             onChange={(event) => setField("email", event.target.value)}
             placeholder="jane@example.com"
             type="email"
           />
+          {touched && !value.email.trim() && (
+            <span className="field-error" role="alert">
+              Email is required
+            </span>
+          )}
+          {touched && value.email.trim() && !emailValid && (
+            <span className="field-error" role="alert">
+              Enter a valid email address
+            </span>
+          )}
+          {touched && duplicateExists && (
+            <span className="field-error" role="alert">
+              A profile with this name and email already exists
+            </span>
+          )}
         </label>
         <label className="field-group" htmlFor="profile-color">
           <span>Color</span>

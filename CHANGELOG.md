@@ -25,7 +25,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - **Snapshot overwritten on rapid saves**: each file-save event overwrote the transient snapshot, losing the pre-burst baseline. Snapshot is now captured only once per repo (skipped if one already exists).
 - **Rule path not validated as directory**: `add_directory_rule` and `update_directory_rule` checked `exists()` but not `is_dir()` — a file path passed manually bypassed the folder picker. Both commands now reject non-directory paths.
 - **Auto-switch watcher no restart on channel disconnect**: if the event channel dropped, the watcher thread exited permanently. The watcher loop now restarts with exponential backoff (1 s → 2 s → … capped at 30 s).
-- **Proof panel SSH check presence-only**: the SSH row showed ✓ for any profile with an SSH key, regardless of whether the *correct* key was applied to the repo. Now compares the exact `core.sshCommand` string.
+- **Proof panel SSH check presence-only**: the SSH row showed ✓ for any profile with an SSH key, regardless of whether the _correct_ key was applied to the repo. Now compares the exact `core.sshCommand` string.
 - **Active profile indicator stale after auto-switch**: the Dashboard's active-profile highlight was not refreshed when `auto-switch-triggered` fired. The listener now also calls `fetchProfiles()`.
 - **`last_triggered_at` save failure silently swallowed**: failures were discarded with `let _`; they now log to stderr for visibility in the Tauri dev console.
 

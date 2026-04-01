@@ -27,6 +27,9 @@ import ProfileEditor, {
   toEditorValue,
 } from "./ProfileEditor";
 import DirectoryRulesSection from "./DirectoryRules";
+import { useDebounce } from "../hooks/useDebounce";
+import KeyboardShortcutsHelp from "./KeyboardShortcutsHelp";
+import { ProfileCardSkeleton } from "./ui/Skeleton";
 
 const SCAN_PAGE_SIZE = 20;
 
@@ -47,6 +50,7 @@ export const Dashboard: React.FC = () => {
   const [showCreate, setShowCreate] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
+  const [showShortcuts, setShowShortcuts] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const searchInputRef = useRef<HTMLInputElement>(null);
   const toast = useToast();
@@ -190,7 +194,10 @@ export const Dashboard: React.FC = () => {
 
       // Escape - Close editor or settings
       if (e.key === "Escape") {
-        if (showSettings) {
+        if (showShortcuts) {
+          setShowShortcuts(false);
+          e.preventDefault();
+        } else if (showSettings) {
           setShowSettings(false);
           e.preventDefault();
         } else if (showCreate) {
@@ -198,6 +205,20 @@ export const Dashboard: React.FC = () => {
           e.preventDefault();
         } else if (editingId) {
           setEditingId(null);
+          e.preventDefault();
+        }
+        return;
+      }
+
+      // ? - Show keyboard shortcuts
+      if (e.key === "?" && !e.shiftKey) {
+        const target = e.target as HTMLElement;
+        const isInInput =
+          target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.isContentEditable;
+        if (!isInInput) {
+          setShowShortcuts(true);
           e.preventDefault();
         }
         return;
@@ -238,7 +259,7 @@ export const Dashboard: React.FC = () => {
     return () => {
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [showSettings, showCreate, editingId, profiles.length]);
+  }, [showSettings, showCreate, editingId, showShortcuts, profiles.length]);
 
   const duplicateExists = (value: ProfileEditorValue) => {
     const nextName = value.name.trim().toLowerCase();
@@ -251,20 +272,24 @@ export const Dashboard: React.FC = () => {
     );
   };
 
+  // Debounce search inputs for better performance
+  const debouncedSearchQuery = useDebounce(searchQuery, 300);
+  const debouncedScanSearch = useDebounce(scanSearch, 300);
+
   const filteredProfiles = useMemo(() => {
-    if (!searchQuery.trim()) return profiles;
-    const query = searchQuery.trim().toLowerCase();
+    if (!debouncedSearchQuery.trim()) return profiles;
+    const query = debouncedSearchQuery.trim().toLowerCase();
     return profiles.filter(
       (p) =>
         p.label.toLowerCase().includes(query) ||
         p.name.toLowerCase().includes(query) ||
         p.email.toLowerCase().includes(query),
     );
-  }, [profiles, searchQuery]);
+  }, [profiles, debouncedSearchQuery]);
 
   const filteredScanRepos = useMemo(() => {
-    if (!scanSearch.trim()) return scannedRepos;
-    const q = scanSearch.trim().toLowerCase();
+    if (!debouncedScanSearch.trim()) return scannedRepos;
+    const q = debouncedScanSearch.trim().toLowerCase();
     return scannedRepos.filter(
       (r) =>
         r.name.toLowerCase().includes(q) ||
@@ -272,7 +297,7 @@ export const Dashboard: React.FC = () => {
         (r.userName ?? "").toLowerCase().includes(q) ||
         (r.userEmail ?? "").toLowerCase().includes(q),
     );
-  }, [scannedRepos, scanSearch]);
+  }, [scannedRepos, debouncedScanSearch]);
 
   const scanTotalPages = Math.max(
     1,
@@ -478,7 +503,11 @@ export const Dashboard: React.FC = () => {
         )}
 
         {loading ? (
-          <div className="empty-state">Loading your profiles...</div>
+          <div className="profile-list">
+            {[...Array(3)].map((_, i) => (
+              <ProfileCardSkeleton key={i} />
+            ))}
+          </div>
         ) : profiles.length === 0 ? (
           <div className="welcome-panel glass-panel">
             <div className="welcome-icon">
@@ -541,8 +570,14 @@ export const Dashboard: React.FC = () => {
           </div>
         ) : filteredProfiles.length === 0 ? (
           <div className="glass-panel empty-state">
-            <Users size={48} />
-            <p>No profiles match your search.</p>
+            <Search size={48} />
+            <p>No profiles match "{searchQuery}"</p>
+            <button
+              className="btn btn-secondary"
+              onClick={() => setSearchQuery("")}
+            >
+              Clear search
+            </button>
           </div>
         ) : (
           <div className="profile-list">
@@ -842,6 +877,9 @@ export const Dashboard: React.FC = () => {
       </footer>
 
       {showSettings && <Settings onClose={() => setShowSettings(false)} />}
+      {showShortcuts && (
+        <KeyboardShortcutsHelp onClose={() => setShowShortcuts(false)} />
+      )}
     </div>
   );
 };

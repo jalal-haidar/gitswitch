@@ -8,6 +8,7 @@ import {
   CheckCircle2,
   XCircle,
   Loader2,
+  Copy,
 } from "lucide-react";
 import { open as openFolderPicker } from "@tauri-apps/plugin-dialog";
 import { normalizeBackendError } from "../utils/error";
@@ -17,6 +18,7 @@ import {
   RepoLocalConfig,
   useProfileStore,
 } from "../stores/useProfileStore";
+import { RuleCardSkeleton } from "./ui/Skeleton";
 
 interface RuleDraft {
   id?: string;
@@ -408,7 +410,13 @@ export const DirectoryRulesSection: React.FC = () => {
         />
       )}
 
-      {directoryRules.length === 0 && !showCreate ? (
+      {rulesLoading ? (
+        <div className="rule-list" role="list">
+          {[...Array(2)].map((_, i) => (
+            <RuleCardSkeleton key={i} />
+          ))}
+        </div>
+      ) : directoryRules.length === 0 && !showCreate ? (
         <div
           className="welcome-panel glass-panel rules-empty-guide"
           role="status"
@@ -573,6 +581,24 @@ export const DirectoryRulesSection: React.FC = () => {
                     const cfg = ts.result!;
                     const check = (actual?: string, expected?: string) =>
                       actual && expected && actual.trim() === expected.trim();
+
+                    const copyToClipboard = (text: string) => {
+                      navigator.clipboard
+                        .writeText(text)
+                        .then(() => {
+                          toast.show({
+                            message: "Copied to clipboard",
+                            kind: "success",
+                            duration: 2000,
+                          });
+                        })
+                        .catch(() => {
+                          toast.show({
+                            message: "Failed to copy",
+                            kind: "error",
+                          });
+                        });
+                    };
                     return (
                       <div
                         className="glass-panel rule-proof-panel"
@@ -605,6 +631,17 @@ export const DirectoryRulesSection: React.FC = () => {
                             <span>
                               <strong>user.name</strong>:{" "}
                               {cfg.userName ?? <em>not set</em>}
+                              {cfg.userName && (
+                                <button
+                                  className="btn-icon-inline"
+                                  type="button"
+                                  onClick={() => copyToClipboard(cfg.userName!)}
+                                  title="Copy to clipboard"
+                                  aria-label="Copy user.name"
+                                >
+                                  <Copy size={12} />
+                                </button>
+                              )}
                             </span>
                           </li>
                           <li>
@@ -616,6 +653,17 @@ export const DirectoryRulesSection: React.FC = () => {
                             <span>
                               <strong>user.email</strong>:{" "}
                               {cfg.userEmail ?? <em>not set</em>}
+                              {cfg.userEmail && (
+                                <button
+                                  className="btn-icon-inline"
+                                  type="button"
+                                  onClick={() => copyToClipboard(cfg.userEmail!)}
+                                  title="Copy to clipboard"
+                                  aria-label="Copy user.email"
+                                >
+                                  <Copy size={12} />
+                                </button>
+                              )}
                             </span>
                           </li>
                           {(() => {
@@ -643,6 +691,19 @@ export const DirectoryRulesSection: React.FC = () => {
                                 <span>
                                   <strong>core.sshCommand</strong>:{" "}
                                   {cfg.coreSshCommand ?? <em>not set</em>}
+                                  {cfg.coreSshCommand && (
+                                    <button
+                                      className="btn-icon-inline"
+                                      type="button"
+                                      onClick={() =>
+                                        copyToClipboard(cfg.coreSshCommand!)
+                                      }
+                                      title="Copy to clipboard"
+                                      aria-label="Copy core.sshCommand"
+                                    >
+                                      <Copy size={12} />
+                                    </button>
+                                  )}
                                   {!sshOk && (
                                     <span className="proof-hint">
                                       {expectedSshCmd
