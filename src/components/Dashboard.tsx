@@ -109,7 +109,26 @@ export const Dashboard: React.FC = () => {
         void useProfileStore.getState().fetchProfiles();
       });
     };
-    setup();
+    setup().catch(() => undefined);
+    return () => {
+      unlisten?.();
+    };
+  }, []);
+
+  // Surface tray profile-switch errors to the user
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    const setup = async () => {
+      const { listen } = await import("@tauri-apps/api/event");
+      unlisten = await listen<string>("tray-switch-failed", (event) => {
+        toastRef.current.show({
+          message: `Tray switch failed: ${friendlyErrorMessage(event.payload)}`,
+          kind: "error",
+          duration: 8000,
+        });
+      });
+    };
+    setup().catch(() => undefined);
     return () => {
       unlisten?.();
     };
@@ -128,7 +147,7 @@ export const Dashboard: React.FC = () => {
         });
       });
     };
-    setup();
+    setup().catch(() => undefined);
     return () => {
       unlisten?.();
     };
@@ -147,7 +166,7 @@ export const Dashboard: React.FC = () => {
         });
       });
     };
-    setup();
+    setup().catch(() => undefined);
     return () => {
       unlisten?.();
     };
@@ -180,7 +199,7 @@ export const Dashboard: React.FC = () => {
         },
       );
     };
-    setup();
+    setup().catch(() => undefined);
     return () => {
       unlisten?.();
     };

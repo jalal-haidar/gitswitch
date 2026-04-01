@@ -197,7 +197,10 @@ fn on_menu_event(app: &AppHandle, id: &str) {
                     // Tell the frontend to re-fetch profiles so UI + title bar update
                     let _ = app.emit("profiles-changed", ());
                 }
-                Err(e) => eprintln!("[tray] switch error: {e}"),
+                Err(e) => {
+                    eprintln!("[tray] switch error: {e}");
+                    let _ = app.emit("tray-switch-failed", e);
+                }
                 }
             }
         }
