@@ -300,7 +300,7 @@ export const Dashboard: React.FC = () => {
                 message: `Duplicated ${activeProfile.label}`,
                 kind: "success",
               });
-            }).catch((e: any) => {
+            }).catch((e) => {
               toast.show({
                 message: `Duplicate failed: ${friendlyErrorMessage(e)}`,
                 kind: "error",

@@ -1148,4 +1148,53 @@ mod tests {
         assert!(res.is_ok());
         assert!(profile.ssh_key_path.is_none());
     }
+
+    // ── extract_github_username ──────────────────────────────────
+
+    #[test]
+    fn extract_username_standard() {
+        let output = "Hi octocat! You've successfully authenticated, but GitHub does not provide shell access.";
+        assert_eq!(extract_github_username(output).as_deref(), Some("octocat"));
+    }
+
+    #[test]
+    fn extract_username_with_hyphens() {
+        let output = "Hi my-user-name! You've successfully authenticated...";
+        assert_eq!(extract_github_username(output).as_deref(), Some("my-user-name"));
+    }
+
+    #[test]
+    fn extract_username_none_on_garbage() {
+        assert!(extract_github_username("Permission denied (publickey).").is_none());
+    }
+
+    #[test]
+    fn extract_username_none_on_empty() {
+        assert!(extract_github_username("").is_none());
+    }
+
+    // ── find_git_root ────────────────────────────────────────────
+
+    #[test]
+    fn find_git_root_discovers_repo() {
+        let tmp = std::env::temp_dir().join("gitswitch_test_find_root");
+        let repo = tmp.join("project");
+        let sub = repo.join("src").join("deep");
+        let _ = std::fs::create_dir_all(sub.join(".keep")); // deep nested dir
+        let _ = std::fs::create_dir_all(repo.join(".git"));
+
+        let found = find_git_root(&sub);
+        assert!(found.is_some(), "should find git root");
+        let found = found.unwrap();
+        assert!(found.ends_with("project"), "root should be project dir, got: {}", found.display());
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn find_git_root_returns_none_at_filesystem_root() {
+        // A path with no .git anywhere should return None eventually
+        let result = find_git_root(std::path::Path::new("Z:\\nonexistent\\deep\\path"));
+        assert!(result.is_none());
+    }
 }
