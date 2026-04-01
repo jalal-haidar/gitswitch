@@ -2,6 +2,7 @@ import React, { useMemo, useState } from "react";
 import { open as openFilePicker } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
 import type { GitProfile } from "../stores/useProfileStore";
+import { isPlausibleEmail, isPlausibleGpgKeyId, LIMITS } from "../utils/validation";
 
 const HelpTooltip: React.FC<{ text: string }> = ({ text }) => (
   <span className="help-tooltip" aria-label={text} tabIndex={0}>
@@ -94,8 +95,12 @@ export const ProfileEditor: React.FC<ProfileEditorProps> = ({
   };
 
   const emailValid = useMemo(
-    () => /.+@.+\..+/.test(value.email.trim()),
+    () => isPlausibleEmail(value.email),
     [value.email],
+  );
+  const gpgValid = useMemo(
+    () => isPlausibleGpgKeyId(value.gpgKeyId ?? ""),
+    [value.gpgKeyId],
   );
   const duplicateExists = useMemo(
     () => isDuplicate?.(value) ?? false,
@@ -106,6 +111,7 @@ export const ProfileEditor: React.FC<ProfileEditorProps> = ({
     value.name.trim() !== "" &&
     value.email.trim() !== "" &&
     emailValid &&
+    gpgValid &&
     !duplicateExists;
 
   const setField = <K extends keyof ProfileEditorValue>(
@@ -142,6 +148,7 @@ export const ProfileEditor: React.FC<ProfileEditorProps> = ({
             value={value.label}
             onChange={(event) => setField("label", event.target.value)}
             placeholder="Work"
+            maxLength={LIMITS.LABEL}
             autoFocus
           />
           {touched && !value.label.trim() && (
@@ -159,6 +166,7 @@ export const ProfileEditor: React.FC<ProfileEditorProps> = ({
             value={value.name}
             onChange={(event) => setField("name", event.target.value)}
             placeholder="Jane Doe"
+            maxLength={LIMITS.NAME}
           />
           {touched && !value.name.trim() && (
             <span className="field-error" role="alert">
@@ -177,6 +185,7 @@ export const ProfileEditor: React.FC<ProfileEditorProps> = ({
             onChange={(event) => setField("email", event.target.value)}
             placeholder="jane@example.com"
             type="email"
+            maxLength={LIMITS.EMAIL}
           />
           {touched && !value.email.trim() && (
             <span className="field-error" role="alert">
@@ -275,7 +284,13 @@ export const ProfileEditor: React.FC<ProfileEditorProps> = ({
             value={value.gpgKeyId ?? ""}
             onChange={(event) => setField("gpgKeyId", event.target.value)}
             placeholder="ABC123"
+            maxLength={LIMITS.GPG_KEY_ID}
           />
+          {touched && value.gpgKeyId?.trim() && !gpgValid && (
+            <span className="field-error" role="alert">
+              GPG key ID should be a hexadecimal string
+            </span>
+          )}
         </label>
       </div>
 
