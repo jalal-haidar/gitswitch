@@ -476,7 +476,16 @@ h4 {
   transition: all var(--transition-normal);
   border-left: 4px solid transparent;
   position: relative;
+  animation: fadeIn var(--transition-normal) ease-out both;
 }
+
+/* Staggered animation delays for profile cards */
+.profile-card:nth-child(1) { animation-delay: 50ms; }
+.profile-card:nth-child(2) { animation-delay: 100ms; }
+.profile-card:nth-child(3) { animation-delay: 150ms; }
+.profile-card:nth-child(4) { animation-delay: 200ms; }
+.profile-card:nth-child(5) { animation-delay: 250ms; }
+.profile-card:nth-child(n+6) { animation-delay: 300ms; }
 
 .profile-card:hover {
   transform: translateX(2px);
@@ -1009,7 +1018,16 @@ input::placeholder {
   gap: 1rem;
   transition: all var(--transition-fast);
   cursor: pointer;
+  animation: fadeIn var(--transition-normal) ease-out both;
 }
+
+/* Staggered animation delays for rule rows */
+.rule-row:nth-child(1) { animation-delay: 50ms; }
+.rule-row:nth-child(2) { animation-delay: 100ms; }
+.rule-row:nth-child(3) { animation-delay: 150ms; }
+.rule-row:nth-child(4) { animation-delay: 200ms; }
+.rule-row:nth-child(5) { animation-delay: 250ms; }
+.rule-row:nth-child(n+6) { animation-delay: 300ms; }
 
 .rule-row:hover {
   transform: translateX(2px);
