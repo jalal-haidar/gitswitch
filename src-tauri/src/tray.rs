@@ -217,3 +217,49 @@ fn show_main_window(app: &AppHandle) {
         let _ = window.set_focus();
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_hex_valid_6_digit() {
+        assert_eq!(parse_hex_color("#7C3AED"), (124, 58, 237));
+    }
+
+    #[test]
+    fn parse_hex_without_hash() {
+        assert_eq!(parse_hex_color("FF0000"), (255, 0, 0));
+    }
+
+    #[test]
+    fn parse_hex_lowercase() {
+        assert_eq!(parse_hex_color("#ff8800"), (255, 136, 0));
+    }
+
+    #[test]
+    fn parse_hex_returns_default_for_short_input() {
+        assert_eq!(parse_hex_color("#FFF"), (124, 58, 237));
+    }
+
+    #[test]
+    fn parse_hex_returns_default_for_empty() {
+        assert_eq!(parse_hex_color(""), (124, 58, 237));
+    }
+
+    #[test]
+    fn parse_hex_returns_default_for_non_hex_chars() {
+        assert_eq!(parse_hex_color("#ZZZZZZ"), (124, 58, 237));
+    }
+
+    #[test]
+    fn parse_hex_no_panic_on_multibyte_utf8() {
+        // Multi-byte UTF-8 that is 6 bytes long but fewer than 6 chars
+        assert_eq!(parse_hex_color("日本語"), (124, 58, 237));
+    }
+
+    #[test]
+    fn parse_hex_no_panic_on_emoji() {
+        assert_eq!(parse_hex_color("😀😀"), (124, 58, 237));
+    }
+}

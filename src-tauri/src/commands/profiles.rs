@@ -1003,6 +1003,11 @@ mod tests {
     }
 
     #[test]
+    fn email_rejects_at_in_domain() {
+        assert!(!is_plausible_email("user@ex@mple.com"));
+    }
+
+    #[test]
     fn email_rejects_leading_dot_local() {
         assert!(!is_plausible_email(".user@example.com"));
     }
