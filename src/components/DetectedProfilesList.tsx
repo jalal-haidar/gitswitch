@@ -33,8 +33,8 @@ export const DetectedProfilesList: React.FC = () => {
         gpgKeyId: p.gpgKeyId,
       });
       toast.show({ message: `Imported ${created.name}`, kind: "success" });
-    } catch (e: any) {
-      const info = normalizeBackendError(e?.toString?.() ?? e);
+    } catch (e) {
+      const info = normalizeBackendError(e);
       const actions = [] as { label: string; onClick: () => void }[];
       actions.push({ label: "Retry", onClick: () => handleImport(p) });
       if (info.hint && typeof info.hint === "string") {
@@ -85,8 +85,8 @@ export const DetectedProfilesList: React.FC = () => {
         message: `Imported and activated ${p.name}`,
         kind: "success",
       });
-    } catch (e: any) {
-      const info = normalizeBackendError(e?.toString?.() ?? e);
+    } catch (e) {
+      const info = normalizeBackendError(e);
       const actions = [] as { label: string; onClick: () => void }[];
       actions.push({
         label: "Retry",

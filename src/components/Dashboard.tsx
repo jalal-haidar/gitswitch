@@ -462,7 +462,7 @@ export const Dashboard: React.FC = () => {
           kind: "success",
         });
       }
-    } catch (e: any) {
+    } catch (e) {
       toast.show({ message: `Scan failed: ${friendlyErrorMessage(e)}`, kind: "error" });
     } finally {
       setScanLoading(false);
@@ -484,7 +484,7 @@ export const Dashboard: React.FC = () => {
         message: `Applied "${label}" to ${repoName}`,
         kind: "success",
       });
-    } catch (e: any) {
+    } catch (e) {
       toast.show({ message: `Apply failed: ${friendlyErrorMessage(e)}`, kind: "error" });
     } finally {
       setApplyingPath(null);

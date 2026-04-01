@@ -545,13 +545,10 @@ export const DirectoryRulesSection: React.FC = () => {
                             ...s,
                             [rule.id]: { loading: false, result: cfg },
                           }));
-                        } catch (err: any) {
-                          const info = normalizeBackendError(
-                            err?.toString?.() ?? err,
-                          );
+                        } catch (err) {
                           setTestState((s) => ({
                             ...s,
-                            [rule.id]: { loading: false, error: info.message },
+                            [rule.id]: { loading: false, error: friendlyErrorMessage(err) },
                           }));
                         }
                       }}

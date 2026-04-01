@@ -112,7 +112,7 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
         "get_auto_switch_enabled",
       );
       set({ autoSwitchEnabled, autoSwitchLoading: false });
-    } catch (e: any) {
+    } catch (e) {
       set({ rulesError: friendlyErrorMessage(e), autoSwitchLoading: false });
       throw e;
     }
@@ -128,7 +128,7 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
         },
       );
       set({ autoSwitchEnabled, autoSwitchLoading: false });
-    } catch (e: any) {
+    } catch (e) {
       set({ rulesError: friendlyErrorMessage(e), autoSwitchLoading: false });
       throw e;
     }
@@ -153,7 +153,7 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
         invoke<string | null>("get_active_profile_id"),
       ]);
       set({ profiles, activeProfileId, loading: false });
-    } catch (e: any) {
+    } catch (e) {
       set({ error: friendlyErrorMessage(e), loading: false });
     }
   },
@@ -167,7 +167,7 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
       await get().fetchProfiles();
       set({ loading: false });
       return created;
-    } catch (e: any) {
+    } catch (e) {
       set({ error: friendlyErrorMessage(e), loading: false });
       throw e;
     }
@@ -193,7 +193,7 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
       await invoke("update_profile", { profile });
       await get().fetchProfiles();
       set({ loading: false });
-    } catch (e: any) {
+    } catch (e) {
       set({ error: friendlyErrorMessage(e), loading: false });
       throw e;
     }
@@ -205,7 +205,7 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
       await invoke("delete_profile", { id });
       await get().fetchProfiles();
       set({ loading: false });
-    } catch (e: any) {
+    } catch (e) {
       set({ error: friendlyErrorMessage(e), loading: false });
       throw e;
     }
@@ -217,7 +217,7 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
       await invoke("switch_profile_globally", { id });
       await get().fetchProfiles();
       set({ loading: false });
-    } catch (e: any) {
+    } catch (e) {
       set({ error: friendlyErrorMessage(e), loading: false });
       throw e;
     }
@@ -244,7 +244,7 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
         "get_directory_rules",
       );
       set({ directoryRules, rulesLoading: false });
-    } catch (e: any) {
+    } catch (e) {
       set({ rulesError: friendlyErrorMessage(e), rulesLoading: false });
       throw e;
     }
@@ -259,7 +259,7 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
       await get().fetchDirectoryRules();
       set({ rulesLoading: false });
       return created;
-    } catch (e: any) {
+    } catch (e) {
       set({ rulesError: friendlyErrorMessage(e), rulesLoading: false });
       throw e;
     }
@@ -271,7 +271,7 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
       await invoke("update_directory_rule", { rule });
       await get().fetchDirectoryRules();
       set({ rulesLoading: false });
-    } catch (e: any) {
+    } catch (e) {
       set({ rulesError: friendlyErrorMessage(e), rulesLoading: false });
       throw e;
     }
@@ -283,7 +283,7 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
       await invoke("delete_directory_rule", { id });
       await get().fetchDirectoryRules();
       set({ rulesLoading: false });
-    } catch (e: any) {
+    } catch (e) {
       set({ rulesError: friendlyErrorMessage(e), rulesLoading: false });
       throw e;
     }
@@ -311,7 +311,7 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
   restoreRepoSnapshot: async (repoPath) => {
     try {
       await invoke("restore_repo_snapshot", { repo_path: repoPath });
-    } catch (e: any) {
+    } catch (e) {
       set({ error: friendlyErrorMessage(e) });
       throw e;
     }

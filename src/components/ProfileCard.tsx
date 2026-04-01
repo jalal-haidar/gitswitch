@@ -112,7 +112,7 @@ export const ProfileCard: React.FC<ProfileCardProps> = ({
                   setPendingSnapshot(snapshot);
                   setConfirmBusy(false);
                   setConfirmOpen(true);
-                } catch (e: any) {
+                } catch (e) {
                   setConfirmBusy(false);
                   toast.show({
                     message: `Failed to prepare switch: ${friendlyErrorMessage(e)}`,
@@ -167,7 +167,7 @@ export const ProfileCard: React.FC<ProfileCardProps> = ({
                       },
                     ],
                   });
-                } catch (e: any) {
+                } catch (e) {
                   toast.show({ message: `Switch failed: ${friendlyErrorMessage(e)}`, kind: "error" });
                 } finally {
                   setConfirmBusy(false);
@@ -211,7 +211,7 @@ export const ProfileCard: React.FC<ProfileCardProps> = ({
                 message: `Duplicated ${profile.label}`,
                 kind: "success",
               });
-            } catch (e: any) {
+            } catch (e) {
               toast.show({ message: `Duplicate failed: ${friendlyErrorMessage(e)}`, kind: "error" });
             } finally {
               setDupBusy(false);
@@ -243,7 +243,7 @@ export const ProfileCard: React.FC<ProfileCardProps> = ({
                 message: `Applied ${profile.label} to repo`,
                 kind: "success",
               });
-            } catch (e: any) {
+            } catch (e) {
               toast.show({ message: `Apply failed: ${friendlyErrorMessage(e)}`, kind: "error" });
             } finally {
               setApplyBusy(false);

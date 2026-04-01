@@ -88,7 +88,7 @@ export const ProfileEditor: React.FC<ProfileEditorProps> = ({
         host: null,
       });
       setSshTestStatus(result);
-    } catch (e: any) {
+    } catch (e) {
       setSshTestStatus({ success: false, username: null, message: friendlyErrorMessage(e) });
     } finally {
       setSshTesting(false);
