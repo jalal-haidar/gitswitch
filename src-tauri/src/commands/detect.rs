@@ -248,6 +248,27 @@ pub fn scan_repos(app: AppHandle, root: String, max_depth: Option<u32>) -> Resul
     if !root_path.exists() {
         return Err(format!("Root path does not exist: {}", root));
     }
+    if !root_path.is_dir() {
+        return Err(format!("Root path is not a directory: {}", root));
+    }
+
+    // Validate scan root is within the user's home directory to prevent scanning system directories
+    #[cfg(not(windows))]
+    {
+        let home = env::var("USERPROFILE")
+            .or_else(|_| env::var("HOME"))
+            .ok()
+            .map(PathBuf::from);
+        if let Some(ref home_dir) = home {
+            let canonical_root = std::fs::canonicalize(root_path)
+                .unwrap_or_else(|_| root_path.to_path_buf());
+            let canonical_home = std::fs::canonicalize(home_dir)
+                .unwrap_or_else(|_| home_dir.clone());
+            if !canonical_root.starts_with(&canonical_home) {
+                return Err("Scan root must be inside your home directory".to_string());
+            }
+        }
+    }
 
     // Load profiles once for matching
     let config = crate::config::store::load_config(&app).map_err(|e| e.to_string())?;

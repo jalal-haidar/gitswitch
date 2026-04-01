@@ -16,25 +16,57 @@ use crate::models::GitConfigSnapshot;
 static TRANSIENT_SNAPSHOTS: Lazy<Mutex<HashMap<String, GitConfigSnapshot>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
 
+/// Normalize a snapshot key to a canonical form so the same repo directory
+/// always resolves to the same key regardless of how the path is represented.
+fn normalize_snapshot_key(key: &str) -> String {
+    // Try to canonicalize; fall back to lowercased + forward-slash form.
+    if let Ok(canonical) = std::fs::canonicalize(key) {
+        let s = canonical.to_string_lossy().to_string();
+        // Strip Windows extended-length prefix for consistency
+        #[cfg(windows)]
+        {
+            if let Some(stripped) = s.strip_prefix("\\\\?\\") {
+                return stripped.to_lowercase();
+            }
+        }
+        return s.to_lowercase();
+    }
+    // Fallback: normalize slashes and case
+    key.replace('\\', "/").to_lowercase()
+}
+
 pub fn set_transient_snapshot(key: &str, snap: GitConfigSnapshot) {
-    if let Ok(mut m) = TRANSIENT_SNAPSHOTS.lock() {
-        m.insert(key.to_string(), snap);
+    let normalized = normalize_snapshot_key(key);
+    match TRANSIENT_SNAPSHOTS.lock() {
+        Ok(mut m) => {
+            m.insert(normalized, snap);
+        }
+        Err(poisoned) => {
+            eprintln!("[store] snapshot mutex poisoned, recovering for write");
+            poisoned.into_inner().insert(normalized, snap);
+        }
     }
 }
 
 pub fn take_transient_snapshot(key: &str) -> Option<GitConfigSnapshot> {
-    if let Ok(mut m) = TRANSIENT_SNAPSHOTS.lock() {
-        m.remove(key)
-    } else {
-        None
+    let normalized = normalize_snapshot_key(key);
+    match TRANSIENT_SNAPSHOTS.lock() {
+        Ok(mut m) => m.remove(&normalized),
+        Err(poisoned) => {
+            eprintln!("[store] snapshot mutex poisoned, recovering for take");
+            poisoned.into_inner().remove(&normalized)
+        }
     }
 }
 
 pub fn has_transient_snapshot(key: &str) -> bool {
-    if let Ok(m) = TRANSIENT_SNAPSHOTS.lock() {
-        m.contains_key(key)
-    } else {
-        false
+    let normalized = normalize_snapshot_key(key);
+    match TRANSIENT_SNAPSHOTS.lock() {
+        Ok(m) => m.contains_key(&normalized),
+        Err(poisoned) => {
+            eprintln!("[store] snapshot mutex poisoned, recovering for check");
+            poisoned.into_inner().contains_key(&normalized)
+        }
     }
 }
 

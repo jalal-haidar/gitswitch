@@ -26,16 +26,41 @@ fn sanitize_string(s: &str, max_len: usize) -> String {
 }
 
 fn is_plausible_email(email: &str) -> bool {
-    // Basic check: has '@' and a '.' after it, and reasonable length
-    if email.len() < 3 || email.len() > 254 {
+    if email.len() < 5 || email.len() > 254 {
         return false;
     }
-    let bytes = email.as_bytes();
-    if let Some(at_pos) = bytes.iter().position(|&b| b == b'@') {
-        // require a dot after '@'
-        return bytes.iter().skip(at_pos + 1).any(|&b| b == b'.');
+
+    let parts: Vec<&str> = email.split('@').collect();
+    if parts.len() != 2 {
+        return false;
     }
-    false
+
+    let (local, domain) = (parts[0], parts[1]);
+
+    // Local part: at least 1 char, no leading/trailing dots, no consecutive dots
+    if local.is_empty() || local.starts_with('.') || local.ends_with('.') || local.contains("..") {
+        return false;
+    }
+
+    // Domain: must have at least one dot, valid structure
+    if domain.is_empty()
+        || !domain.contains('.')
+        || domain.starts_with('.')
+        || domain.ends_with('.')
+        || domain.contains("..")
+    {
+        return false;
+    }
+
+    // Only allow safe characters
+    let local_ok = local
+        .chars()
+        .all(|c| c.is_alphanumeric() || matches!(c, '.' | '-' | '_' | '+'));
+    let domain_ok = domain
+        .chars()
+        .all(|c| c.is_alphanumeric() || matches!(c, '.' | '-'));
+
+    local_ok && domain_ok
 }
 
 /// Returns the current user's home directory, first expanding a leading `~`.
@@ -73,12 +98,20 @@ fn validate_and_sanitize_profile(p: &mut GitProfile) -> Result<(), String> {
         } else {
             let resolved = resolve_path(&raw);
             // Security: SSH key must live inside the user's home directory
-            if let Some(home) = user_home_dir() {
-                if !resolved.starts_with(&home) {
-                    return Err(format!(
-                        "SSH key path must be inside your home directory ({})",
-                        home.display()
-                    ));
+            match user_home_dir() {
+                Some(home) => {
+                    if !resolved.starts_with(&home) {
+                        return Err(format!(
+                            "SSH key path must be inside your home directory ({})",
+                            home.display()
+                        ));
+                    }
+                }
+                None => {
+                    return Err(
+                        "Cannot determine home directory — SSH key path validation failed"
+                            .to_string(),
+                    );
                 }
             }
             if !resolved.exists() {
@@ -429,6 +462,15 @@ struct ProfilesExport {
 
 #[tauri::command]
 pub fn export_profiles(app: AppHandle, path: String) -> Result<(), String> {
+    // Validate export path is within the user's home directory
+    let export_path = std::path::Path::new(&path);
+    if let Some(home) = user_home_dir() {
+        let parent = export_path.parent().unwrap_or(export_path);
+        if !parent.starts_with(&home) {
+            return Err("Export path must be inside your home directory".to_string());
+        }
+    }
+
     let config = store::load_config(&app).map_err(|e| e.to_string())?;
     let export = ProfilesExport {
         version: EXPORT_VERSION,
@@ -462,6 +504,16 @@ pub fn import_profiles(app: AppHandle, path: String) -> Result<ImportResult, Str
     let mut skipped = 0u32;
 
     for mut profile in export.profiles {
+        // Validate and sanitize every imported profile
+        profile.id = Uuid::new_v4().to_string(); // Always assign a fresh id
+        profile.is_default = false;
+
+        // Sanitize fields the same way as add_profile
+        if let Err(_) = validate_and_sanitize_profile(&mut profile) {
+            skipped += 1;
+            continue;
+        }
+
         // Check duplicate by name + email (case-insensitive)
         let exists = config.profiles.iter().any(|p| {
             p.name.trim().to_lowercase() == profile.name.trim().to_lowercase()
@@ -471,9 +523,7 @@ pub fn import_profiles(app: AppHandle, path: String) -> Result<ImportResult, Str
             skipped += 1;
             continue;
         }
-        // Always assign a fresh id to avoid collisions
-        profile.id = Uuid::new_v4().to_string();
-        profile.is_default = false;
+
         config.profiles.push(profile);
         added += 1;
     }
@@ -707,12 +757,44 @@ pub fn test_ssh_connection(key_path: String, host: Option<String>) -> Result<Ssh
         return Err("SSH key path is required".to_string());
     }
 
-    if !std::path::Path::new(&key_path).exists() {
+    // Resolve and validate the key path is within the user's home directory
+    let resolved_key = resolve_path(key_path.trim());
+    match user_home_dir() {
+        Some(home) => {
+            if !resolved_key.starts_with(&home) {
+                return Err("SSH key must be inside your home directory".to_string());
+            }
+        }
+        None => {
+            return Err(
+                "Cannot determine home directory — SSH key path validation failed".to_string(),
+            );
+        }
+    }
+
+    if !resolved_key.exists() {
         return Err(format!("SSH key file not found: {}", key_path));
     }
 
+    let key_path_str = resolved_key.to_string_lossy().to_string();
+
+    // Validate and sanitize the host parameter
     let ssh_host = match host.as_deref() {
-        Some(h) if !h.is_empty() => h.to_string(),
+        Some(h) if !h.is_empty() => {
+            let trimmed = h.trim();
+            // Validate host format: must be a valid SSH destination (user@host or host)
+            // Only allow alphanumeric, dots, hyphens, underscores, colons, and @
+            if !trimmed
+                .chars()
+                .all(|c| c.is_alphanumeric() || matches!(c, '.' | '-' | '_' | ':' | '@'))
+            {
+                return Err("Invalid host format — only alphanumeric characters, dots, hyphens, and @ are allowed".to_string());
+            }
+            if trimmed.len() > 253 {
+                return Err("Host name is too long".to_string());
+            }
+            trimmed.to_string()
+        }
         _ => "git@github.com".to_string(),
     };
 
@@ -727,7 +809,7 @@ pub fn test_ssh_connection(key_path: String, host: Option<String>) -> Result<Ssh
     };
 
     let mut ssh_cmd = Command::new("ssh");
-    ssh_cmd.args(["-T", "-i", &key_path,
+    ssh_cmd.args(["-T", "-i", &key_path_str,
                "-o", "IdentitiesOnly=yes",
                "-o", "StrictHostKeyChecking=no",
                "-o", "BatchMode=yes",

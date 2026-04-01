@@ -34,7 +34,15 @@ fn last_event_store() -> &'static Mutex<Option<AutoSwitchEvent>> {
 }
 
 pub fn get_last_auto_switch_event() -> Option<AutoSwitchEvent> {
-    last_event_store().lock().ok().and_then(|guard| (*guard).clone())
+    match last_event_store().lock() {
+        Ok(guard) => (*guard).clone(),
+        Err(poisoned) => {
+            // Recover from poisoned mutex — a panic in another thread shouldn't
+            // permanently break last-event reads.
+            eprintln!("[auto-switch] last-event mutex was poisoned, recovering");
+            (*poisoned.into_inner()).clone()
+        }
+    }
 }
 
 fn set_last_auto_switch_event(profile_id: String, path: String) {
@@ -43,12 +51,20 @@ fn set_last_auto_switch_event(profile_id: String, path: String) {
         .map(|duration| duration.as_millis() as u64)
         .unwrap_or(0);
 
-    if let Ok(mut guard) = last_event_store().lock() {
-        *guard = Some(AutoSwitchEvent {
-            profile_id,
-            path,
-            occurred_at_epoch_ms: now,
-        });
+    let event = Some(AutoSwitchEvent {
+        profile_id,
+        path,
+        occurred_at_epoch_ms: now,
+    });
+
+    match last_event_store().lock() {
+        Ok(mut guard) => {
+            *guard = event;
+        }
+        Err(poisoned) => {
+            eprintln!("[auto-switch] last-event mutex was poisoned, recovering for write");
+            *poisoned.into_inner() = event;
+        }
     }
 }
 
