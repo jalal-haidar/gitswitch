@@ -116,7 +116,7 @@ fn validate_and_sanitize_profile(p: &mut GitProfile) -> Result<(), String> {
     }
 
     if let Some(ref mut gpg) = p.gpg_key_id.clone() {
-        let s = sanitize_string(&gpg, 128);
+        let s = sanitize_string(gpg, 128);
         if s.is_empty() {
             p.gpg_key_id = None;
         } else {
@@ -508,7 +508,7 @@ pub fn import_profiles(app: AppHandle, path: String) -> Result<ImportResult, Str
         profile.is_default = false;
 
         // Sanitize fields the same way as add_profile
-        if let Err(_) = validate_and_sanitize_profile(&mut profile) {
+        if validate_and_sanitize_profile(&mut profile).is_err() {
             skipped += 1;
             continue;
         }

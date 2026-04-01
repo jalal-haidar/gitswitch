@@ -38,7 +38,7 @@ pub fn detect_identities(_app: AppHandle, directory: Option<String>) -> Result<V
     // If a directory is provided, run git commands there; otherwise use current dir
     let dir = directory
         .or_else(|| env::var("PWD").ok())
-        .unwrap_or_else(|| String::new());
+        .unwrap_or_default();
     let path = if dir.is_empty() { Path::new(".") } else { Path::new(&dir) };
 
     // Helper to run git and capture stdout as trimmed string, returning detailed error on failure
@@ -59,7 +59,7 @@ pub fn detect_identities(_app: AppHandle, directory: Option<String>) -> Result<V
 
             // `git config --get ...` exits non-zero when value is unset.
             // Treat this as "no value" instead of a hard error.
-            let is_get_lookup = args.iter().any(|arg| *arg == "--get");
+            let is_get_lookup = args.contains(&"--get");
             if is_get_lookup && stderr.is_empty() {
                 return Ok(None);
             }
