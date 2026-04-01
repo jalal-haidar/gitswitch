@@ -73,13 +73,13 @@ export function normalizeBackendError(e: unknown): NormalizedBackendError {
     }
 
     if (e && typeof e === "object") {
-      const obj: any = e as any;
-      if (obj.kind && obj.message) {
+      const obj = e as Record<string, unknown>;
+      if (typeof obj.kind === "string" && typeof obj.message === "string") {
         return {
           title: obj.kind,
           message: obj.message,
-          hint: obj.hint,
-          details: obj.details,
+          hint: typeof obj.hint === "string" ? obj.hint : undefined,
+          details: typeof obj.details === "string" ? obj.details : undefined,
           kind: obj.kind,
         };
       }

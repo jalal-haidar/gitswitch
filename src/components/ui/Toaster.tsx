@@ -76,7 +76,7 @@ export const Toaster: React.FC = () => {
           message={t.message}
           kind={t.kind}
           duration={t.duration}
-          actions={t.actions as any}
+          actions={t.actions}
           onClose={dismiss}
         />
       ))}
