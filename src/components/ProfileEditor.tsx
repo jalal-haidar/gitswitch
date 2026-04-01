@@ -142,6 +142,7 @@ export const ProfileEditor: React.FC<ProfileEditorProps> = ({
             value={value.label}
             onChange={(event) => setField("label", event.target.value)}
             placeholder="Work"
+            autoFocus
           />
           {touched && !value.label.trim() && (
             <span className="field-error" role="alert">

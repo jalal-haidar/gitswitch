@@ -19,6 +19,7 @@ import {
   useProfileStore,
 } from "../stores/useProfileStore";
 import { RuleCardSkeleton } from "./ui/Skeleton";
+import ConfirmModal from "./ui/ConfirmModal";
 
 interface RuleDraft {
   id?: string;
@@ -197,6 +198,7 @@ export const DirectoryRulesSection: React.FC = () => {
   const toast = useToast();
   const [showCreate, setShowCreate] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [draft, setDraft] = useState<RuleDraft>(emptyRule);
 
   useEffect(() => {
@@ -341,11 +343,14 @@ export const DirectoryRulesSection: React.FC = () => {
       if (editingId === id) {
         resetEditor();
       }
+      setDeleteConfirmId(null);
     } catch (e: any) {
       const info = normalizeBackendError(e?.toString?.() ?? e);
       toast.show({ message: info.message, kind: "error" });
     }
   };
+
+  const ruleToDelete = directoryRules.find(r => r.id === deleteConfirmId);
 
   return (
     <section className="rules-section" aria-labelledby="rules-heading">
@@ -563,7 +568,7 @@ export const DirectoryRulesSection: React.FC = () => {
                     <button
                       className="btn-icon delete-btn"
                       type="button"
-                      onClick={() => handleDelete(rule.id)}
+                      onClick={() => setDeleteConfirmId(rule.id)}
                       title="Delete rule"
                       aria-label={`Delete rule ${rule.path}`}
                     >
@@ -760,6 +765,25 @@ export const DirectoryRulesSection: React.FC = () => {
           })}
         </div>
       )}
+
+      <ConfirmModal
+        open={deleteConfirmId !== null}
+        title="Delete directory rule?"
+        description={
+          ruleToDelete
+            ? `Delete rule for "${ruleToDelete.path}"? This cannot be undone.`
+            : "Delete this rule?"
+        }
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        busy={rulesLoading}
+        onCancel={() => setDeleteConfirmId(null)}
+        onConfirm={() => {
+          if (deleteConfirmId) {
+            handleDelete(deleteConfirmId);
+          }
+        }}
+      />
     </section>
   );
 };

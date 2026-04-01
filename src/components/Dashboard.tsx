@@ -253,13 +253,51 @@ export const Dashboard: React.FC = () => {
         }
         return;
       }
+
+      // Cmd/Ctrl+D - Duplicate active profile
+      if (cmdOrCtrl && e.key === "d") {
+        const target = e.target as HTMLElement;
+        const isInInput =
+          target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.isContentEditable;
+        if (!isInInput && activeProfileId) {
+          const activeProfile = profiles.find(p => p.id === activeProfileId);
+          if (activeProfile) {
+            e.preventDefault();
+            const {
+              id: _id,
+              isDefault: _def,
+              remoteUrl: _ru,
+              remoteService: _rs,
+              ...rest
+            } = activeProfile;
+            addProfile({
+              ...rest,
+              label: `Copy of ${activeProfile.label}`,
+              isDefault: false,
+            }).then(() => {
+              toast.show({
+                message: `Duplicated ${activeProfile.label}`,
+                kind: "success",
+              });
+            }).catch((e: any) => {
+              toast.show({
+                message: `Duplicate failed: ${normalizeBackendError(e)}`,
+                kind: "error",
+              });
+            });
+          }
+        }
+        return;
+      }
     };
 
     document.addEventListener("keydown", handleKeyDown);
     return () => {
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [showSettings, showCreate, editingId, showShortcuts, profiles.length]);
+  }, [showSettings, showCreate, editingId, showShortcuts, profiles.length, activeProfileId, profiles, addProfile, toast]);
 
   const duplicateExists = (value: ProfileEditorValue) => {
     const nextName = value.name.trim().toLowerCase();

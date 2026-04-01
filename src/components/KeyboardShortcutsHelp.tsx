@@ -13,6 +13,7 @@ const KeyboardShortcuts: React.FC<KeyboardShortcutsHelpProps> = ({
 
   const shortcuts = [
     { key: `${modKey}+N`, action: "Create new profile" },
+    { key: `${modKey}+D`, action: "Duplicate active profile" },
     { key: `${modKey}+F`, action: "Focus search" },
     { key: `${modKey}+,`, action: "Open settings" },
     { key: "Esc", action: "Close dialogs" },
