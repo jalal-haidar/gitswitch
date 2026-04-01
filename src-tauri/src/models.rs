@@ -60,10 +60,6 @@ pub struct GitConfigSnapshot {
     pub core_ssh_command: Option<String>,
 }
 
-// Add ssh_command to scanned repo so UI can show repo-local core.sshCommand
-impl ScannedRepo {
-    // keep existing struct; helper constructor can be added elsewhere if needed
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
