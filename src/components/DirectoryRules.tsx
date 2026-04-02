@@ -351,7 +351,7 @@ export const DirectoryRulesSection: React.FC = () => {
     }
   };
 
-  const ruleToDelete = directoryRules.find(r => r.id === deleteConfirmId);
+  const ruleToDelete = directoryRules.find((r) => r.id === deleteConfirmId);
 
   return (
     <section className="rules-section" aria-labelledby="rules-heading">
@@ -548,7 +548,10 @@ export const DirectoryRulesSection: React.FC = () => {
                         } catch (err) {
                           setTestState((s) => ({
                             ...s,
-                            [rule.id]: { loading: false, error: friendlyErrorMessage(err) },
+                            [rule.id]: {
+                              loading: false,
+                              error: friendlyErrorMessage(err),
+                            },
                           }));
                         }
                       }}
@@ -666,7 +669,9 @@ export const DirectoryRulesSection: React.FC = () => {
                                 <button
                                   className="btn-icon-inline"
                                   type="button"
-                                  onClick={() => copyToClipboard(cfg.userEmail!)}
+                                  onClick={() =>
+                                    copyToClipboard(cfg.userEmail!)
+                                  }
                                   title="Copy to clipboard"
                                   aria-label="Copy user.email"
                                 >

@@ -230,35 +230,23 @@ fn collect_repos(dir: &Path, depth: u32, max_depth: u32, results: &mut Vec<PathB
     }
 }
 
-/// Scan `root` recursively (up to `max_depth`, default 5) for git repositories
-/// and return identity + remote information for each one found.
-#[tauri::command]
-pub fn scan_repos(app: AppHandle, root: String, max_depth: Option<u32>) -> Result<Vec<ScannedRepo>, String> {
-    let max_depth = max_depth.unwrap_or(5).min(10);
-    let root_path = Path::new(&root);
+fn validate_scan_root(root_path: &Path, root: &str) -> Result<(), String> {
     if !root_path.exists() {
         return Err(format!("Root path does not exist: {}", root));
     }
     if !root_path.is_dir() {
         return Err(format!("Root path is not a directory: {}", root));
     }
+    Ok(())
+}
 
-    // Validate scan root is within the user's home directory to prevent scanning system directories
-    {
-        let home = env::var("USERPROFILE")
-            .or_else(|_| env::var("HOME"))
-            .ok()
-            .map(PathBuf::from);
-        if let Some(ref home_dir) = home {
-            let canonical_root = std::fs::canonicalize(root_path)
-                .unwrap_or_else(|_| root_path.to_path_buf());
-            let canonical_home = std::fs::canonicalize(home_dir)
-                .unwrap_or_else(|_| home_dir.clone());
-            if !canonical_root.starts_with(&canonical_home) {
-                return Err("Scan root must be inside your home directory".to_string());
-            }
-        }
-    }
+/// Scan `root` recursively (up to `max_depth`, default 5) for git repositories
+/// and return identity + remote information for each one found.
+#[tauri::command]
+pub fn scan_repos(app: AppHandle, root: String, max_depth: Option<u32>) -> Result<Vec<ScannedRepo>, String> {
+    let max_depth = max_depth.unwrap_or(5).min(10);
+    let root_path = Path::new(&root);
+    validate_scan_root(root_path, &root)?;
 
     // Load profiles once for matching
     let config = crate::config::store::load_config(&app).map_err(|e| e.to_string())?;
@@ -395,5 +383,41 @@ mod tests {
         );
 
         let _ = fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn validate_scan_root_accepts_existing_directory() {
+        let tmp = std::env::temp_dir().join("gitswitch_test_scan_root_ok");
+        let _ = fs::create_dir_all(&tmp);
+
+        let result = validate_scan_root(&tmp, &tmp.to_string_lossy());
+        assert!(result.is_ok());
+
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn validate_scan_root_rejects_missing_path() {
+        let tmp = std::env::temp_dir().join(format!(
+            "gitswitch_test_scan_root_missing_{}",
+            Uuid::new_v4()
+        ));
+
+        let result = validate_scan_root(&tmp, &tmp.to_string_lossy());
+        assert!(matches!(result, Err(message) if message.contains("does not exist")));
+    }
+
+    #[test]
+    fn validate_scan_root_rejects_file_path() {
+        let tmp = std::env::temp_dir().join(format!(
+            "gitswitch_test_scan_root_file_{}",
+            Uuid::new_v4()
+        ));
+        let _ = fs::write(&tmp, "not a directory");
+
+        let result = validate_scan_root(&tmp, &tmp.to_string_lossy());
+        assert!(matches!(result, Err(message) if message.contains("not a directory")));
+
+        let _ = fs::remove_file(&tmp);
     }
 }

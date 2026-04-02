@@ -123,10 +123,17 @@ export function validateProfileForm(profile: {
   if (profile.color && !isValidHexColor(profile.color)) {
     errors.color = "Must be a valid hex color (e.g. #7C3AED)";
   }
-  if (profile.sshKeyPath && profile.sshKeyPath.trim().length > LIMITS.SSH_KEY_PATH) {
+  if (
+    profile.sshKeyPath &&
+    profile.sshKeyPath.trim().length > LIMITS.SSH_KEY_PATH
+  ) {
     errors.sshKeyPath = `SSH key path is too long (max ${LIMITS.SSH_KEY_PATH} characters)`;
   }
-  if (profile.gpgKeyId && profile.gpgKeyId.trim() && !isPlausibleGpgKeyId(profile.gpgKeyId)) {
+  if (
+    profile.gpgKeyId &&
+    profile.gpgKeyId.trim() &&
+    !isPlausibleGpgKeyId(profile.gpgKeyId)
+  ) {
     errors.gpgKeyId = "GPG key ID should be a hexadecimal string";
   }
 

@@ -295,7 +295,7 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
   applyProfileToRepo: async (profileId, repoPath) => {
     await invoke("apply_profile_to_repo", {
       id: profileId,
-      repo_path: repoPath,
+      repoPath,
     });
   },
 
@@ -309,11 +309,11 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
   },
 
   scanRepos: async (root, maxDepth?) => {
-    return invoke<ScannedRepo[]>("scan_repos", { root, max_depth: maxDepth });
+    return invoke<ScannedRepo[]>("scan_repos", { root, maxDepth });
   },
   restoreRepoSnapshot: async (repoPath) => {
     try {
-      await invoke("restore_repo_snapshot", { repo_path: repoPath });
+      await invoke("restore_repo_snapshot", { repoPath });
     } catch (e) {
       set({ error: friendlyErrorMessage(e) });
       throw e;
@@ -321,7 +321,7 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
   },
   getRepoLocalConfig: async (repoPath) => {
     return invoke<RepoLocalConfig>("get_repo_local_config", {
-      repo_path: repoPath,
+      repoPath,
     });
   },
 }));

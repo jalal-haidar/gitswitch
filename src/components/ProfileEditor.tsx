@@ -2,7 +2,11 @@ import React, { useMemo, useState } from "react";
 import { open as openFilePicker } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
 import type { GitProfile } from "../stores/useProfileStore";
-import { isPlausibleEmail, isPlausibleGpgKeyId, LIMITS } from "../utils/validation";
+import {
+  isPlausibleEmail,
+  isPlausibleGpgKeyId,
+  LIMITS,
+} from "../utils/validation";
 import { friendlyErrorMessage } from "../utils/error";
 
 const HelpTooltip: React.FC<{ text: string }> = ({ text }) => (
@@ -89,7 +93,11 @@ export const ProfileEditor: React.FC<ProfileEditorProps> = ({
       });
       setSshTestStatus(result);
     } catch (e) {
-      setSshTestStatus({ success: false, username: null, message: friendlyErrorMessage(e) });
+      setSshTestStatus({
+        success: false,
+        username: null,
+        message: friendlyErrorMessage(e),
+      });
     } finally {
       setSshTesting(false);
     }
@@ -251,7 +259,11 @@ export const ProfileEditor: React.FC<ProfileEditorProps> = ({
                     setSshTestStatus(null);
                   }
                 } catch {
-                  setSshTestStatus({ success: false, username: null, message: "Failed to open file picker" });
+                  setSshTestStatus({
+                    success: false,
+                    username: null,
+                    message: "Failed to open file picker",
+                  });
                 }
               }}
             >

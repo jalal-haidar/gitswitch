@@ -15,6 +15,7 @@ import Settings from "./Settings";
 
 import {
   GitProfile,
+  RepoLocalConfig,
   ScannedRepo,
   useProfileStore,
 } from "../stores/useProfileStore";
@@ -22,6 +23,8 @@ import { useToast } from "./ui/useToast";
 import { normalizeBackendError, friendlyErrorMessage } from "../utils/error";
 import { ProfileCard } from "./ProfileCard";
 import DetectedProfilesList from "./DetectedProfilesList";
+import RepoLocalConfigResults from "./RepoLocalConfigResults";
+import type { RepoLocalConfigResultItem } from "./RepoLocalConfigResults";
 import ProfileEditor, {
   ProfileEditorValue,
   toEditorValue,
@@ -46,6 +49,7 @@ export const Dashboard: React.FC = () => {
     detectLoading,
     scanRepos,
     applyProfileToRepo,
+    getRepoLocalConfig,
   } = useProfileStore();
   const [showCreate, setShowCreate] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -71,6 +75,16 @@ export const Dashboard: React.FC = () => {
   const [scanSnapshots, setScanSnapshots] = useState<Record<string, boolean>>(
     {},
   );
+  const [selectedRepoPaths, setSelectedRepoPaths] = useState<
+    Record<string, boolean>
+  >({});
+  const [selectedRepoConfigs, setSelectedRepoConfigs] = useState<
+    Record<string, RepoLocalConfig>
+  >({});
+  const [selectedConfigsLoading, setSelectedConfigsLoading] = useState(false);
+  const [selectedConfigsError, setSelectedConfigsError] = useState<
+    string | null
+  >(null);
 
   useEffect(() => {
     getVersion()
@@ -281,7 +295,7 @@ export const Dashboard: React.FC = () => {
           target.tagName === "TEXTAREA" ||
           target.isContentEditable;
         if (!isInInput && activeProfileId) {
-          const activeProfile = profiles.find(p => p.id === activeProfileId);
+          const activeProfile = profiles.find((p) => p.id === activeProfileId);
           if (activeProfile) {
             e.preventDefault();
             const {
@@ -295,17 +309,19 @@ export const Dashboard: React.FC = () => {
               ...rest,
               label: `Copy of ${activeProfile.label}`,
               isDefault: false,
-            }).then(() => {
-              toast.show({
-                message: `Duplicated ${activeProfile.label}`,
-                kind: "success",
+            })
+              .then(() => {
+                toast.show({
+                  message: `Duplicated ${activeProfile.label}`,
+                  kind: "success",
+                });
+              })
+              .catch((e) => {
+                toast.show({
+                  message: `Duplicate failed: ${friendlyErrorMessage(e)}`,
+                  kind: "error",
+                });
               });
-            }).catch((e) => {
-              toast.show({
-                message: `Duplicate failed: ${friendlyErrorMessage(e)}`,
-                kind: "error",
-              });
-            });
           }
         }
         return;
@@ -316,7 +332,17 @@ export const Dashboard: React.FC = () => {
     return () => {
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [showSettings, showCreate, editingId, showShortcuts, profiles.length, activeProfileId, profiles, addProfile, toast]);
+  }, [
+    showSettings,
+    showCreate,
+    editingId,
+    showShortcuts,
+    profiles.length,
+    activeProfileId,
+    profiles,
+    addProfile,
+    toast,
+  ]);
 
   const duplicateExists = (value: ProfileEditorValue) => {
     const nextName = value.name.trim().toLowerCase();
@@ -368,6 +394,32 @@ export const Dashboard: React.FC = () => {
       ),
     [filteredScanRepos, scanPage],
   );
+  const selectedScannedRepos = useMemo(
+    () => scannedRepos.filter((repo) => selectedRepoPaths[repo.path]),
+    [scannedRepos, selectedRepoPaths],
+  );
+  const selectedConfigItems = useMemo<RepoLocalConfigResultItem[]>(
+    () =>
+      selectedScannedRepos
+        .filter((repo) => !!selectedRepoConfigs[repo.path])
+        .map((repo) => ({
+          repo,
+          config: selectedRepoConfigs[repo.path]!,
+        })),
+    [selectedRepoConfigs, selectedScannedRepos],
+  );
+  const allPagedReposSelected =
+    pagedScanRepos.length > 0 &&
+    pagedScanRepos.every((repo) => selectedRepoPaths[repo.path]);
+  const canClearRepoSelection =
+    selectedScannedRepos.length > 0 ||
+    selectedConfigItems.length > 0 ||
+    !!selectedConfigsError;
+  const configActionLabel =
+    selectedScannedRepos.length > 0 &&
+    selectedScannedRepos.every((repo) => !!selectedRepoConfigs[repo.path])
+      ? "Refresh Local Config"
+      : "Show Local Config";
 
   const handleCreate = async (value: ProfileEditorValue) => {
     if (duplicateExists(value)) return;
@@ -424,11 +476,11 @@ export const Dashboard: React.FC = () => {
   const handleScanRepos = async () => {
     let root: string | null;
     try {
-      root = await openFolderPicker({
+      root = (await openFolderPicker({
         multiple: false,
         directory: true,
         title: "Select root folder to scan for git repos",
-      }) as string | null;
+      })) as string | null;
     } catch {
       return;
     }
@@ -439,7 +491,7 @@ export const Dashboard: React.FC = () => {
       // After scanning repos, query backend for transient snapshot existence per repo
       const snapshotChecks = await Promise.all(
         results.map((r) =>
-          invoke<boolean>("has_repo_snapshot", { repo_path: r.path }).then(
+          invoke<boolean>("has_repo_snapshot", { repoPath: r.path }).then(
             (b) => ({ path: r.path, has: b }),
           ),
         ),
@@ -450,6 +502,9 @@ export const Dashboard: React.FC = () => {
       setScannedRepos(results);
       setScanSearch("");
       setScanPage(0);
+      setSelectedRepoPaths({});
+      setSelectedRepoConfigs({});
+      setSelectedConfigsError(null);
       // Pre-select matched profile (or first profile) for each row
       const targets: Record<string, string> = {};
       for (const r of results) {
@@ -463,7 +518,10 @@ export const Dashboard: React.FC = () => {
         });
       }
     } catch (e) {
-      toast.show({ message: `Scan failed: ${friendlyErrorMessage(e)}`, kind: "error" });
+      toast.show({
+        message: `Scan failed: ${friendlyErrorMessage(e)}`,
+        kind: "error",
+      });
     } finally {
       setScanLoading(false);
     }
@@ -484,10 +542,142 @@ export const Dashboard: React.FC = () => {
         message: `Applied "${label}" to ${repoName}`,
         kind: "success",
       });
+      void refreshSelectedRepoConfig(repoPath);
     } catch (e) {
-      toast.show({ message: `Apply failed: ${friendlyErrorMessage(e)}`, kind: "error" });
+      toast.show({
+        message: `Apply failed: ${friendlyErrorMessage(e)}`,
+        kind: "error",
+      });
     } finally {
       setApplyingPath(null);
+    }
+  };
+
+  const toggleRepoSelection = (repoPath: string) => {
+    setSelectedRepoPaths((prev) => {
+      const next = { ...prev };
+      if (next[repoPath]) {
+        delete next[repoPath];
+      } else {
+        next[repoPath] = true;
+      }
+      return next;
+    });
+    setSelectedConfigsError(null);
+  };
+
+  const handleTogglePagedRepoSelection = () => {
+    setSelectedRepoPaths((prev) => {
+      const next = { ...prev };
+      if (allPagedReposSelected) {
+        for (const repo of pagedScanRepos) {
+          delete next[repo.path];
+        }
+      } else {
+        for (const repo of pagedScanRepos) {
+          next[repo.path] = true;
+        }
+      }
+      return next;
+    });
+    setSelectedConfigsError(null);
+  };
+
+  const handleClearRepoSelection = () => {
+    setSelectedRepoPaths({});
+    setSelectedRepoConfigs({});
+    setSelectedConfigsError(null);
+  };
+
+  const handleDismissRepoConfig = (repoPath: string) => {
+    setSelectedRepoPaths((prev) => {
+      const next = { ...prev };
+      delete next[repoPath];
+      return next;
+    });
+    setSelectedRepoConfigs((prev) => {
+      const next = { ...prev };
+      delete next[repoPath];
+      return next;
+    });
+  };
+
+  const handleLoadSelectedRepoConfigs = async () => {
+    if (selectedScannedRepos.length === 0) return;
+
+    setSelectedConfigsLoading(true);
+    setSelectedConfigsError(null);
+
+    const results = await Promise.allSettled(
+      selectedScannedRepos.map(async (repo) => ({
+        repo,
+        config: await getRepoLocalConfig(repo.path),
+      })),
+    );
+
+    const successfulConfigs: Array<{
+      path: string;
+      config: RepoLocalConfig;
+    }> = [];
+    let failedCount = 0;
+
+    for (const result of results) {
+      if (result.status === "fulfilled") {
+        successfulConfigs.push({
+          path: result.value.repo.path,
+          config: result.value.config,
+        });
+      } else {
+        failedCount += 1;
+      }
+    }
+
+    if (successfulConfigs.length > 0) {
+      setSelectedRepoConfigs((prev) => {
+        const next = { ...prev };
+        for (const item of successfulConfigs) {
+          next[item.path] = item.config;
+        }
+        return next;
+      });
+    }
+
+    if (failedCount > 0) {
+      const message =
+        failedCount === selectedScannedRepos.length
+          ? `Failed to load local git config for ${failedCount} selected repo${failedCount === 1 ? "" : "s"}.`
+          : `Loaded local git config for ${successfulConfigs.length} repo${successfulConfigs.length === 1 ? "" : "s"}; ${failedCount} failed.`;
+      setSelectedConfigsError(message);
+      toast.show({
+        message,
+        kind: failedCount === selectedScannedRepos.length ? "error" : "info",
+      });
+    } else {
+      toast.show({
+        message: `Loaded local git config for ${successfulConfigs.length} repo${successfulConfigs.length === 1 ? "" : "s"}.`,
+        kind: "success",
+      });
+    }
+
+    setSelectedConfigsLoading(false);
+  };
+
+  const refreshSelectedRepoConfig = async (repoPath: string) => {
+    if (!selectedRepoPaths[repoPath]) return;
+
+    try {
+      const config = await getRepoLocalConfig(repoPath);
+      setSelectedRepoConfigs((prev) => ({
+        ...prev,
+        [repoPath]: config,
+      }));
+    } catch {
+      setSelectedRepoConfigs((prev) => {
+        if (!prev[repoPath]) return prev;
+        const next = { ...prev };
+        delete next[repoPath];
+        return next;
+      });
     }
   };
 
@@ -686,7 +876,12 @@ export const Dashboard: React.FC = () => {
                 <button
                   className="btn btn-ghost"
                   type="button"
-                  onClick={() => setScannedRepos([])}
+                  onClick={() => {
+                    setScannedRepos([]);
+                    setScanSnapshots({});
+                    setApplyTargets({});
+                    handleClearRepoSelection();
+                  }}
                 >
                   Clear
                 </button>
@@ -707,26 +902,63 @@ export const Dashboard: React.FC = () => {
           {scannedRepos.length === 0 && !scanLoading && (
             <p className="muted scan-hint">
               Pick a root folder (e.g. C:\projects) to discover all git repos
-              inside it and bulk-apply identities in one place.
+              inside it, bulk-apply identities, and inspect each repo's local
+              git config.
             </p>
           )}
 
           {scannedRepos.length > 0 && (
             <div className="glass-panel scan-results">
               <div className="scan-results-toolbar">
-                <div className="scan-count muted">
-                  {filteredScanRepos.length !== scannedRepos.length
-                    ? `${filteredScanRepos.length} of ${scannedRepos.length} repos`
-                    : `${scannedRepos.length} repo${scannedRepos.length !== 1 ? "s" : ""} found`}
-                  {scannedRepos.length === 200 && (
-                    <span
-                      className="scan-truncation-hint"
-                      title="Results are capped at 200. Scan a narrower folder or reduce max depth."
-                    >
-                      {" "}
-                      · capped at 200 — narrow the root folder to see more
+                <div className="scan-toolbar-main">
+                  <div className="scan-count muted">
+                    {filteredScanRepos.length !== scannedRepos.length
+                      ? `${filteredScanRepos.length} of ${scannedRepos.length} repos`
+                      : `${scannedRepos.length} repo${scannedRepos.length !== 1 ? "s" : ""} found`}
+                    {scannedRepos.length === 200 && (
+                      <span
+                        className="scan-truncation-hint"
+                        title="Results are capped at 200. Scan a narrower folder or reduce max depth."
+                      >
+                        {" "}
+                        · capped at 200 — narrow the root folder to see more
+                      </span>
+                    )}
+                  </div>
+                  <div className="scan-bulk-actions">
+                    <span className="scan-selection-count muted">
+                      {selectedScannedRepos.length === 0
+                        ? "No repos selected"
+                        : `${selectedScannedRepos.length} selected`}
                     </span>
-                  )}
+                    <button
+                      className="btn btn-secondary btn-sm"
+                      type="button"
+                      onClick={handleTogglePagedRepoSelection}
+                      disabled={pagedScanRepos.length === 0}
+                    >
+                      {allPagedReposSelected ? "Unselect Page" : "Select Page"}
+                    </button>
+                    <button
+                      className="btn btn-primary btn-sm"
+                      type="button"
+                      onClick={handleLoadSelectedRepoConfigs}
+                      disabled={
+                        selectedScannedRepos.length === 0 ||
+                        selectedConfigsLoading
+                      }
+                    >
+                      {selectedConfigsLoading ? "Loading…" : configActionLabel}
+                    </button>
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      type="button"
+                      onClick={handleClearRepoSelection}
+                      disabled={!canClearRepoSelection}
+                    >
+                      Clear Selection
+                    </button>
+                  </div>
                 </div>
                 <div className="scan-search-wrap">
                   <Search size={14} className="scan-search-icon" />
@@ -742,12 +974,9 @@ export const Dashboard: React.FC = () => {
                   />
                 </div>
               </div>
-              <div
-                className="scan-table"
-                role="table"
-                aria-label="Scanned repositories"
-              >
-                <div className="scan-header" role="row" aria-hidden="true">
+              <div className="scan-table" aria-label="Scanned repositories">
+                <div className="scan-header" aria-hidden="true">
+                  <span>Select</span>
                   <span>Repository</span>
                   <span>Detected Identity</span>
                   <span>Apply Profile</span>
@@ -759,7 +988,15 @@ export const Dashboard: React.FC = () => {
                   const targetProfileId = applyTargets[repo.path] ?? "";
                   const isApplying = applyingPath === repo.path;
                   return (
-                    <div key={repo.path} className="scan-row" role="row">
+                    <div key={repo.path} className="scan-row">
+                      <div className="scan-cell scan-select-cell">
+                        <input
+                          type="checkbox"
+                          checked={!!selectedRepoPaths[repo.path]}
+                          onChange={() => toggleRepoSelection(repo.path)}
+                          aria-label={`Select ${repo.name} to view local git config`}
+                        />
+                      </div>
                       <div className="scan-cell scan-repo-info">
                         <strong className="scan-repo-name">{repo.name}</strong>
                         <span
@@ -790,37 +1027,22 @@ export const Dashboard: React.FC = () => {
                                 SSH cmd: {repo.sshCommand}
                               </div>
                             )}
-                            {matchedProfile ? (
-                              <span
-                                className="detail-item scan-match-badge"
-                                style={{
-                                  background: `${matchedProfile.color}22`,
-                                  color: matchedProfile.color,
-                                  borderColor: `${matchedProfile.color}44`,
-                                }}
-                              >
-                                {matchedProfile.label}
-                              </span>
-                            ) : (
-                              <span className="muted scan-no-match">
-                                No match
-                              </span>
-                            )}
-                            {scanSnapshots[repo.path] && (
-                              <span
-                                className="detail-item snapshot-badge"
-                                style={{
-                                  background: "#2ecc71",
-                                  color: "white",
-                                  padding: "2px 6px",
-                                  borderRadius: 6,
-                                  marginLeft: 8,
-                                  fontSize: 12,
-                                }}
-                              >
-                                Snapshot available
-                              </span>
-                            )}
+                            <div className="scan-identity-badges">
+                              {matchedProfile ? (
+                                <span className="detail-item scan-match-badge">
+                                  {matchedProfile.label}
+                                </span>
+                              ) : (
+                                <span className="muted scan-no-match">
+                                  No match
+                                </span>
+                              )}
+                              {scanSnapshots[repo.path] && (
+                                <span className="detail-item scan-snapshot-badge">
+                                  Snapshot available
+                                </span>
+                              )}
+                            </div>
                           </>
                         ) : (
                           <span className="muted">Not set</span>
@@ -856,7 +1078,6 @@ export const Dashboard: React.FC = () => {
                         <button
                           className="btn btn-secondary btn-sm"
                           type="button"
-                          style={{ marginLeft: 8 }}
                           disabled={!scanSnapshots[repo.path]}
                           title={
                             !scanSnapshots[repo.path]
@@ -875,12 +1096,13 @@ export const Dashboard: React.FC = () => {
                               // refresh snapshot state for this repo
                               const b = await invoke<boolean>(
                                 "has_repo_snapshot",
-                                { repo_path: repo.path },
+                                { repoPath: repo.path },
                               );
                               setScanSnapshots((s) => ({
                                 ...s,
                                 [repo.path]: b,
                               }));
+                              void refreshSelectedRepoConfig(repo.path);
                               // refresh scanned repo list UI
                               setScannedRepos((s) => s.slice());
                             } catch (err) {
@@ -898,6 +1120,15 @@ export const Dashboard: React.FC = () => {
                   );
                 })}
               </div>
+              {(selectedConfigItems.length > 0 || selectedConfigsError) && (
+                <RepoLocalConfigResults
+                  items={selectedConfigItems}
+                  selectedCount={selectedScannedRepos.length}
+                  error={selectedConfigsError}
+                  onClear={handleClearRepoSelection}
+                  onDismiss={handleDismissRepoConfig}
+                />
+              )}
               {scanTotalPages > 1 && (
                 <div className="scan-pagination">
                   <button

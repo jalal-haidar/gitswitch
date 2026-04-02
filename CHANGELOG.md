@@ -3,6 +3,19 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.2.7] - 2026-04-02
+
+### Added
+
+- Repo Scanner now supports selecting scanned repositories and viewing their local git config side by side, including `user.name`, `user.email`, `user.signingkey`, `commit.gpgsign`, and `core.sshCommand`.
+- Added focused frontend regression coverage for repo-local-config results rendering and repo-related invoke payload casing.
+
+### Fixed
+
+- Fixed repo-scoped frontend invokes to send the camelCase argument names Tauri binds at runtime, restoring Apply to Repo, repo snapshot restore, local config reads, and explicit scan depth.
+- Fixed repo scanner snapshot checks to use `repoPath`, removing the runtime error shown after scanning or restoring a repository.
+- Removed the over-restrictive repo-scan home-directory guard so user-selected roots on other drives can be scanned successfully again.
+
 ## [0.2.6] - 2026-04-01
 
 ### Added

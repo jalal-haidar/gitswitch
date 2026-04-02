@@ -33,7 +33,7 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
   // Handle escape key
   useEffect(() => {
     if (!open) return;
-    
+
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         onCancel();
@@ -47,10 +47,19 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
   if (!open) return null;
 
   return (
-    <div className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="confirm-modal-title">
+    <div
+      className="modal-overlay"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="confirm-modal-title"
+    >
       <div className="modal-panel glass-panel">
         <h3 id="confirm-modal-title">{title}</h3>
-        {description && <p className="muted" id="confirm-modal-desc">{description}</p>}
+        {description && (
+          <p className="muted" id="confirm-modal-desc">
+            {description}
+          </p>
+        )}
         <div className="profile-editor-actions" style={{ marginTop: "1rem" }}>
           <button
             className="btn btn-secondary"
