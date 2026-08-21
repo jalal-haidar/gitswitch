@@ -20,10 +20,10 @@ pub fn get_store_sensitive_in_keyring(app: AppHandle) -> Result<bool, String> {
 
 #[tauri::command]
 pub fn set_store_sensitive_in_keyring(app: AppHandle, enabled: bool) -> Result<bool, String> {
-    let mut config = store::load_config(&app).map_err(|e| e.to_string())?;
-    config.settings.store_sensitive_in_keyring = enabled;
-    store::save_config(&app, &config).map_err(|e| e.to_string())?;
-    Ok(config.settings.store_sensitive_in_keyring)
+    store::update_config(&app, |config| {
+        config.settings.store_sensitive_in_keyring = enabled;
+        Ok(enabled)
+    })
 }
 
 #[tauri::command]
@@ -34,9 +34,10 @@ pub fn get_start_with_system(app: AppHandle) -> Result<bool, String> {
 
 #[tauri::command]
 pub fn set_start_with_system(app: AppHandle, enabled: bool) -> Result<bool, String> {
-    let mut config = store::load_config(&app).map_err(|e| e.to_string())?;
-    config.settings.start_with_system = enabled;
-    store::save_config(&app, &config).map_err(|e| e.to_string())?;
+    store::update_config(&app, |config| {
+        config.settings.start_with_system = enabled;
+        Ok(())
+    })?;
     
     // Enable/disable OS autostart
     let manager = app.autolaunch();
@@ -46,15 +47,15 @@ pub fn set_start_with_system(app: AppHandle, enabled: bool) -> Result<bool, Stri
         manager.disable().map_err(|e| format!("Failed to disable autostart: {}", e))?;
     }
     
-    Ok(config.settings.start_with_system)
+    Ok(enabled)
 }
 
 #[tauri::command]
 pub fn set_auto_switch_enabled(app: AppHandle, enabled: bool) -> Result<bool, String> {
-    let mut config = store::load_config(&app).map_err(|e| e.to_string())?;
-    config.settings.auto_switch = enabled;
-    store::save_config(&app, &config).map_err(|e| e.to_string())?;
-    Ok(config.settings.auto_switch)
+    store::update_config(&app, |config| {
+        config.settings.auto_switch = enabled;
+        Ok(enabled)
+    })
 }
 
 #[tauri::command]
@@ -64,43 +65,26 @@ pub fn get_last_auto_switch_event() -> Result<Option<auto_switch::AutoSwitchEven
 
 #[tauri::command]
 pub fn get_directory_rules(app: AppHandle) -> Result<Vec<DirectoryRule>, String> {
-    let mut config = store::load_config(&app).map_err(|e| e.to_string())?;
-    let mut changed = false;
+    let config = store::load_config(&app).map_err(|error| error.to_string())?;
+    if config.directory_rules.iter().all(|rule| !rule.id.is_empty()) {
+        return Ok(config.directory_rules);
+    }
 
-    for rule in &mut config.directory_rules {
-        if rule.id.is_empty() {
-            rule.id = Uuid::new_v4().to_string();
-            changed = true;
+    store::update_config(&app, |config| {
+        for rule in &mut config.directory_rules {
+            if rule.id.is_empty() {
+                rule.id = Uuid::new_v4().to_string();
+            }
         }
-    }
-
-    if changed {
-        store::save_config(&app, &config).map_err(|e| e.to_string())?;
-    }
-
-    Ok(config.directory_rules)
+        Ok(config.directory_rules.clone())
+    })
 }
 
 #[tauri::command]
 pub fn add_directory_rule(app: AppHandle, mut rule: DirectoryRule) -> Result<DirectoryRule, String> {
-    let mut config = store::load_config(&app).map_err(|e| e.to_string())?;
-
     let path = rule.path.trim().to_string();
     if path.is_empty() {
         return Err("Rule path is required".to_string());
-    }
-
-    let has_profile = config.profiles.iter().any(|p| p.id == rule.profile_id);
-    if !has_profile {
-        return Err("Selected profile does not exist".to_string());
-    }
-
-    let duplicate = config
-        .directory_rules
-        .iter()
-        .any(|r| r.path.eq_ignore_ascii_case(&path) && r.profile_id == rule.profile_id);
-    if duplicate {
-        return Err("A directory rule with the same path and profile already exists".to_string());
     }
 
     if !std::path::Path::new(&path).exists() {
@@ -115,16 +99,23 @@ pub fn add_directory_rule(app: AppHandle, mut rule: DirectoryRule) -> Result<Dir
     }
     rule.path = path;
 
-    config.directory_rules.push(rule.clone());
-    store::save_config(&app, &config).map_err(|e| e.to_string())?;
-
-    Ok(rule)
+    store::update_config(&app, |config| {
+        if !config.profiles.iter().any(|p| p.id == rule.profile_id) {
+            return Err("Selected profile does not exist".to_string());
+        }
+        if config.directory_rules.iter().any(|existing| {
+            existing.path.eq_ignore_ascii_case(&rule.path)
+                && existing.profile_id == rule.profile_id
+        }) {
+            return Err("A directory rule with the same path and profile already exists".to_string());
+        }
+        config.directory_rules.push(rule.clone());
+        Ok(rule.clone())
+    })
 }
 
 #[tauri::command]
 pub fn update_directory_rule(app: AppHandle, rule: DirectoryRule) -> Result<DirectoryRule, String> {
-    let mut config = store::load_config(&app).map_err(|e| e.to_string())?;
-
     if rule.id.trim().is_empty() {
         return Err("Rule id is required".to_string());
     }
@@ -134,20 +125,6 @@ pub fn update_directory_rule(app: AppHandle, rule: DirectoryRule) -> Result<Dire
         return Err("Rule path is required".to_string());
     }
 
-    let has_profile = config.profiles.iter().any(|p| p.id == rule.profile_id);
-    if !has_profile {
-        return Err("Selected profile does not exist".to_string());
-    }
-
-    let duplicate = config.directory_rules.iter().any(|existing| {
-        existing.id != rule.id
-            && existing.path.eq_ignore_ascii_case(&path)
-            && existing.profile_id == rule.profile_id
-    });
-    if duplicate {
-        return Err("A directory rule with the same path and profile already exists".to_string());
-    }
-
     if !std::path::Path::new(&path).exists() {
         return Err(format!("Directory does not exist: {}", path));
     }
@@ -155,43 +132,45 @@ pub fn update_directory_rule(app: AppHandle, rule: DirectoryRule) -> Result<Dire
         return Err(format!("Path is not a directory: {}", path));
     }
 
-    let mut found = false;
-    for existing in &mut config.directory_rules {
-        if existing.id == rule.id {
-            existing.path = path.clone();
-            existing.profile_id = rule.profile_id.clone();
-            found = true;
-            break;
+    store::update_config(&app, |config| {
+        if !config.profiles.iter().any(|p| p.id == rule.profile_id) {
+            return Err("Selected profile does not exist".to_string());
         }
-    }
+        if config.directory_rules.iter().any(|existing| {
+            existing.id != rule.id
+                && existing.path.eq_ignore_ascii_case(&path)
+                && existing.profile_id == rule.profile_id
+        }) {
+            return Err("A directory rule with the same path and profile already exists".to_string());
+        }
 
-    if !found {
-        return Err(format!("Directory rule not found: {}", rule.id));
-    }
+        let existing = config
+            .directory_rules
+            .iter_mut()
+            .find(|existing| existing.id == rule.id)
+            .ok_or_else(|| format!("Directory rule not found: {}", rule.id))?;
+        existing.path = path.clone();
+        existing.profile_id = rule.profile_id.clone();
 
-    store::save_config(&app, &config).map_err(|e| e.to_string())?;
-
-    Ok(DirectoryRule {
-        id: rule.id,
-        path,
-        profile_id: rule.profile_id,
-        last_triggered_at: rule.last_triggered_at,
+        Ok(DirectoryRule {
+            id: rule.id.clone(),
+            path: path.clone(),
+            profile_id: rule.profile_id.clone(),
+            last_triggered_at: rule.last_triggered_at,
+        })
     })
 }
 
 #[tauri::command]
 pub fn delete_directory_rule(app: AppHandle, id: String) -> Result<(), String> {
-    let mut config = store::load_config(&app).map_err(|e| e.to_string())?;
-
-    let before = config.directory_rules.len();
-    config.directory_rules.retain(|r| r.id != id);
-
-    if config.directory_rules.len() == before {
-        return Err(format!("Directory rule not found: {id}"));
-    }
-
-    store::save_config(&app, &config).map_err(|e| e.to_string())?;
-    Ok(())
+    store::update_config(&app, |config| {
+        let before = config.directory_rules.len();
+        config.directory_rules.retain(|rule| rule.id != id);
+        if config.directory_rules.len() == before {
+            return Err(format!("Directory rule not found: {id}"));
+        }
+        Ok(())
+    })
 }
 
 #[tauri::command]
@@ -206,8 +185,8 @@ pub fn set_theme(app: AppHandle, theme: String) -> Result<String, String> {
     if !valid.contains(&theme.as_str()) {
         return Err(format!("Invalid theme '{}'. Use: system, dark, light", theme));
     }
-    let mut config = store::load_config(&app).map_err(|e| e.to_string())?;
-    config.settings.theme = theme.clone();
-    store::save_config(&app, &config).map_err(|e| e.to_string())?;
-    Ok(theme)
+    store::update_config(&app, |config| {
+        config.settings.theme = theme.clone();
+        Ok(theme.clone())
+    })
 }

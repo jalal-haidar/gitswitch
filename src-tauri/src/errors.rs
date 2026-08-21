@@ -7,6 +7,7 @@ pub enum BackendErrorKind {
     PermissionDenied,
     GitFailed,
     IoError,
+    SecureStorageError,
 }
 
 #[derive(Debug, Serialize)]
@@ -56,6 +57,24 @@ impl BackendError {
 
     pub fn io_error(msg: impl Into<String>) -> Self {
         BackendError::new(BackendErrorKind::IoError, msg)
+    }
+
+    pub fn secure_storage(operation: &str, account: &str, details: impl Into<String>) -> Self {
+        BackendError::new(
+            BackendErrorKind::SecureStorageError,
+            format!("OS secure storage {operation} failed"),
+        )
+        .with_hint("Your previous profile settings were not changed. Unlock or repair the OS credential store, then try again.")
+        .with_details(format!("Credential account '{account}': {}", details.into()))
+    }
+
+    pub fn secure_storage_missing(account: &str) -> Self {
+        BackendError::new(
+            BackendErrorKind::SecureStorageError,
+            "An expected profile value is missing from OS secure storage",
+        )
+        .with_hint("The profile was not modified. Re-enter the missing SSH/GPG value or disable secure storage after access is restored.")
+        .with_details(format!("Missing credential account '{account}'"))
     }
 }
 
@@ -108,6 +127,20 @@ mod tests {
     }
 
     #[test]
+    fn secure_storage_error_is_structured_and_never_needs_a_secret() {
+        let e = BackendError::secure_storage(
+            "write",
+            "profile-1:ssh_key_path",
+            "credential store locked",
+        );
+        let s = e.to_string();
+        assert!(s.contains("SecureStorageError"));
+        assert!(s.contains("previous profile settings were not changed"));
+        assert!(s.contains("profile-1:ssh_key_path"));
+        assert!(!s.contains("secret-value"));
+    }
+
+    #[test]
     fn with_hint_sets_hint() {
         let e = BackendError::new(BackendErrorKind::IoError, "something broke")
             .with_hint("try again later");
@@ -125,8 +158,8 @@ mod tests {
     fn display_produces_valid_json() {
         let e = BackendError::git_not_found();
         let s = e.to_string();
-        let parsed: serde_json::Value = serde_json::from_str(&s)
-            .expect("Display output should be valid JSON");
+        let parsed: serde_json::Value =
+            serde_json::from_str(&s).expect("Display output should be valid JSON");
         assert!(parsed.get("kind").is_some());
         assert!(parsed.get("message").is_some());
         assert!(parsed.get("hint").is_some());

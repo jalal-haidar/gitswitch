@@ -156,29 +156,29 @@ pub fn add_profile(app: AppHandle, mut profile: GitProfile) -> Result<GitProfile
     // sanitize and validate incoming profile fields
     validate_and_sanitize_profile(&mut profile)?;
 
-    let mut config = store::load_config(&app).map_err(|e| e.to_string())?;
-    
     // Assign a new ID if it's empty
     if profile.id.is_empty() {
         profile.id = Uuid::new_v4().to_string();
     }
-    
-    // if this is the first profile, or marked as default, make all others non-default
-    if profile.is_default || config.profiles.is_empty() {
-        profile.is_default = true;
-        for existing_profile in &mut config.profiles {
-            existing_profile.is_default = false;
-        }
-    }
 
-    if config.active_profile_id.is_none() {
-        config.active_profile_id = Some(profile.id.clone());
-    }
-    
-    config.profiles.push(profile.clone());
-    store::save_config(&app, &config).map_err(|e| e.to_string())?;
+    let saved = store::update_config(&app, |config| {
+        // if this is the first profile, or marked as default, make all others non-default
+        if profile.is_default || config.profiles.is_empty() {
+            profile.is_default = true;
+            for existing_profile in &mut config.profiles {
+                existing_profile.is_default = false;
+            }
+        }
+
+        if config.active_profile_id.is_none() {
+            config.active_profile_id = Some(profile.id.clone());
+        }
+
+        config.profiles.push(profile.clone());
+        Ok(profile.clone())
+    })?;
     crate::tray::refresh_tray(&app);
-    Ok(profile)
+    Ok(saved)
 }
 
 #[tauri::command]
@@ -187,72 +187,62 @@ pub fn update_profile(app: AppHandle, profile: GitProfile) -> Result<GitProfile,
     let mut profile = profile;
     validate_and_sanitize_profile(&mut profile)?;
 
-    let mut config = store::load_config(&app).map_err(|e| e.to_string())?;
-    
-    let mut found = false;
-    for existing_profile in &mut config.profiles {
-        if existing_profile.id == profile.id {
-            // Update fields
-            existing_profile.label = profile.label.clone();
-            existing_profile.name = profile.name.clone();
-            existing_profile.email = profile.email.clone();
-            existing_profile.color = profile.color.clone();
-            existing_profile.ssh_key_path = profile.ssh_key_path.clone();
-            existing_profile.gpg_key_id = profile.gpg_key_id.clone();
-            
-            // Handle default change
-            if profile.is_default && !existing_profile.is_default {
-                existing_profile.is_default = true;
+    let saved = store::update_config(&app, |config| {
+        let mut found = false;
+        for existing_profile in &mut config.profiles {
+            if existing_profile.id == profile.id {
+                existing_profile.label = profile.label.clone();
+                existing_profile.name = profile.name.clone();
+                existing_profile.email = profile.email.clone();
+                existing_profile.color = profile.color.clone();
+                existing_profile.ssh_key_path = profile.ssh_key_path.clone();
+                existing_profile.gpg_key_id = profile.gpg_key_id.clone();
+                if profile.is_default && !existing_profile.is_default {
+                    existing_profile.is_default = true;
+                }
                 found = true;
-            } else {
-                found = true;
+            } else if profile.is_default {
+                existing_profile.is_default = false;
             }
-        } else if profile.is_default {
-            existing_profile.is_default = false;
         }
-    }
-    
-    if !found {
-        return Err(format!("Profile not found: {}", profile.id));
-    }
-    
-    store::save_config(&app, &config).map_err(|e| e.to_string())?;
+
+        if !found {
+            return Err(format!("Profile not found: {}", profile.id));
+        }
+        Ok(profile.clone())
+    })?;
     crate::tray::refresh_tray(&app);
-    Ok(profile)
+    Ok(saved)
 }
 
 #[tauri::command]
 pub fn delete_profile(app: AppHandle, id: String) -> Result<(), String> {
-    let mut config = store::load_config(&app).map_err(|e| e.to_string())?;
+    store::update_config(&app, |config| {
+        if config.directory_rules.iter().any(|rule| rule.profile_id == id) {
+            return Err("Cannot delete profile while it is referenced by directory rules".to_string());
+        }
 
-    if config.directory_rules.iter().any(|rule| rule.profile_id == id) {
-        return Err("Cannot delete profile while it is referenced by directory rules".to_string());
-    }
-    
-    let initial_len = config.profiles.len();
-    config.profiles.retain(|p| p.id != id);
-    
-    if config.profiles.len() == initial_len {
-        return Err(format!("Profile not found: {id}"));
-    }
-    
-    // If we deleted the default profile, make the first remaining one default (if any)
-    if config.profiles.iter().all(|p| !p.is_default) && !config.profiles.is_empty() {
-        config.profiles[0].is_default = true;
-    }
+        let initial_len = config.profiles.len();
+        config.profiles.retain(|p| p.id != id);
+        if config.profiles.len() == initial_len {
+            return Err(format!("Profile not found: {id}"));
+        }
 
-    if config.active_profile_id.as_deref() == Some(id.as_str()) {
-        config.active_profile_id = config.profiles.first().map(|p| p.id.clone());
-    }
-    
-    store::save_config(&app, &config).map_err(|e| e.to_string())?;
+        if config.profiles.iter().all(|p| !p.is_default) && !config.profiles.is_empty() {
+            config.profiles[0].is_default = true;
+        }
+        if config.active_profile_id.as_deref() == Some(id.as_str()) {
+            config.active_profile_id = config.profiles.first().map(|p| p.id.clone());
+        }
+        Ok(())
+    })?;
     crate::tray::refresh_tray(&app);
     Ok(())
 }
 
 #[tauri::command]
 pub fn switch_profile_globally(app: AppHandle, id: String) -> Result<(), String> {
-    let mut config = store::load_config(&app).map_err(|e| e.to_string())?;
+    let config = store::load_config(&app).map_err(|e| e.to_string())?;
     let profile = config.profiles.iter().find(|p| p.id == id)
         .ok_or_else(|| format!("Profile not found: {id}"))?;
         
@@ -285,14 +275,19 @@ pub fn switch_profile_globally(app: AppHandle, id: String) -> Result<(), String>
         }
     }
 
-    config.active_profile_id = Some(id);
-    store::save_config(&app, &config).map_err(|e| e.to_string())?;
+    store::update_config(&app, |config| {
+        if !config.profiles.iter().any(|profile| profile.id == id) {
+            return Err(format!("Profile not found: {id}"));
+        }
+        config.active_profile_id = Some(id.clone());
+        Ok(())
+    })?;
     crate::tray::refresh_tray(&app);
     Ok(())
 }
 
 pub fn switch_profile_for_repo(app: AppHandle, id: String, repo_path: &Path) -> Result<(), String> {
-    let mut config = store::load_config(&app).map_err(|e| e.to_string())?;
+    let config = store::load_config(&app).map_err(|e| e.to_string())?;
     let profile = config
         .profiles
         .iter()
@@ -347,22 +342,26 @@ pub fn switch_profile_for_repo(app: AppHandle, id: String, repo_path: &Path) -> 
         }
     }
 
-    config.active_profile_id = Some(id);
-    store::save_config(&app, &config).map_err(|e| e.to_string())?;
+    store::update_config(&app, |config| {
+        if !config.profiles.iter().any(|profile| profile.id == id) {
+            return Err(format!("Profile not found: {id}"));
+        }
+        config.active_profile_id = Some(id.clone());
+        Ok(())
+    })?;
     crate::tray::refresh_tray(&app);
     Ok(())
 }
 
 #[tauri::command]
 pub fn set_active_profile(app: AppHandle, id: String) -> Result<(), String> {
-    let mut config = store::load_config(&app).map_err(|e| e.to_string())?;
-    // ensure profile exists
-    let exists = config.profiles.iter().any(|p| p.id == id);
-    if !exists {
-        return Err(format!("Profile not found: {id}"));
-    }
-    config.active_profile_id = Some(id);
-    store::save_config(&app, &config).map_err(|e| e.to_string())?;
+    store::update_config(&app, |config| {
+        if !config.profiles.iter().any(|profile| profile.id == id) {
+            return Err(format!("Profile not found: {id}"));
+        }
+        config.active_profile_id = Some(id.clone());
+        Ok(())
+    })?;
     crate::tray::refresh_tray(&app);
     Ok(())
 }
@@ -498,40 +497,37 @@ pub fn import_profiles(app: AppHandle, path: String) -> Result<ImportResult, Str
         ));
     }
 
-    let mut config = store::load_config(&app).map_err(|e| e.to_string())?;
-    let mut added = 0u32;
-    let mut skipped = 0u32;
+    let result = store::update_config(&app, move |config| {
+        let mut added = 0u32;
+        let mut skipped = 0u32;
 
-    for mut profile in export.profiles {
-        // Validate and sanitize every imported profile
-        profile.id = Uuid::new_v4().to_string(); // Always assign a fresh id
-        profile.is_default = false;
+        for mut profile in export.profiles {
+            profile.id = Uuid::new_v4().to_string();
+            profile.is_default = false;
+            if validate_and_sanitize_profile(&mut profile).is_err() {
+                skipped += 1;
+                continue;
+            }
 
-        // Sanitize fields the same way as add_profile
-        if validate_and_sanitize_profile(&mut profile).is_err() {
-            skipped += 1;
-            continue;
+            let exists = config.profiles.iter().any(|p| {
+                p.name.trim().to_lowercase() == profile.name.trim().to_lowercase()
+                    && p.email.trim().to_lowercase() == profile.email.trim().to_lowercase()
+            });
+            if exists {
+                skipped += 1;
+                continue;
+            }
+
+            config.profiles.push(profile);
+            added += 1;
         }
 
-        // Check duplicate by name + email (case-insensitive)
-        let exists = config.profiles.iter().any(|p| {
-            p.name.trim().to_lowercase() == profile.name.trim().to_lowercase()
-                && p.email.trim().to_lowercase() == profile.email.trim().to_lowercase()
-        });
-        if exists {
-            skipped += 1;
-            continue;
-        }
-
-        config.profiles.push(profile);
-        added += 1;
-    }
-
-    store::save_config(&app, &config).map_err(|e| e.to_string())?;
-    if added > 0 {
+        Ok(ImportResult { added, skipped })
+    })?;
+    if result.added > 0 {
         crate::tray::refresh_tray(&app);
     }
-    Ok(ImportResult { added, skipped })
+    Ok(result)
 }
 
 #[derive(Serialize)]

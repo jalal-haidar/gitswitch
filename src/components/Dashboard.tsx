@@ -148,25 +148,6 @@ export const Dashboard: React.FC = () => {
     };
   }, []);
 
-  // Warn when OS keyring write fails — credential stored as plain text fallback
-  useEffect(() => {
-    let unlisten: (() => void) | undefined;
-    const setup = async () => {
-      const { listen } = await import("@tauri-apps/api/event");
-      unlisten = await listen<string>("keyring-warning", (event) => {
-        toastRef.current.show({
-          message: `⚠ Keyring unavailable — ${event.payload}`,
-          kind: "error",
-          duration: 8000,
-        });
-      });
-    };
-    setup().catch(() => undefined);
-    return () => {
-      unlisten?.();
-    };
-  }, []);
-
   // Alert when the auto-switch file watcher dies unexpectedly
   useEffect(() => {
     let unlisten: (() => void) | undefined;

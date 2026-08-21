@@ -303,13 +303,20 @@ fn handle_event(
             occurred_at_epoch_ms: now_ms,
         });
         // Stamp last_triggered_at on the directory rule that fired
-        if let Ok(mut cfg) = store::load_config(app) {
-            if let Some(rule) = cfg.directory_rules.iter_mut().find(|r| r.id == match_rule.rule_id) {
+        if let Err(error) = store::update_config(app, |config| {
+            if let Some(rule) = config
+                .directory_rules
+                .iter_mut()
+                .find(|rule| rule.id == match_rule.rule_id)
+            {
                 rule.last_triggered_at = Some(now_ms);
-                if let Err(e) = store::save_config(app, &cfg) {
-                    eprintln!("[auto-switch] failed to stamp last_triggered_at for rule {}: {e}", match_rule.rule_id);
-                }
             }
+            Ok(())
+        }) {
+            eprintln!(
+                "[auto-switch] failed to stamp last_triggered_at for rule {}: {error}",
+                match_rule.rule_id
+            );
         }
     }
 }

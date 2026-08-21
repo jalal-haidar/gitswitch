@@ -1,4 +1,10 @@
 use serde::{Deserialize, Serialize};
+use std::collections::{HashMap, HashSet};
+
+#[derive(Debug, Clone, Default)]
+pub(crate) struct KeyringBaseline {
+    pub entries: HashMap<String, String>,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -60,7 +66,6 @@ pub struct GitConfigSnapshot {
     pub core_ssh_command: Option<String>,
 }
 
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
@@ -95,4 +100,13 @@ pub struct AppConfig {
     pub directory_rules: Vec<DirectoryRule>,
     #[serde(default)]
     pub settings: AppSettings,
+    /// Accounts that are expected to exist in the OS keyring. `None` denotes
+    /// the legacy pre-manifest format; `Some(empty)` is an authoritative empty
+    /// manifest.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) keyring_entries: Option<HashSet<String>>,
+    /// Hydrated credential values captured when the config was loaded. This is
+    /// transaction state only and is never persisted.
+    #[serde(skip)]
+    pub(crate) keyring_baseline: KeyringBaseline,
 }

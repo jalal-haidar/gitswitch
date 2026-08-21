@@ -9,7 +9,7 @@ import {
   Sun,
 } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
-import { friendlyErrorMessage } from "../utils/error";
+import { friendlyErrorMessage, normalizeBackendError } from "../utils/error";
 import {
   save as saveDialog,
   open as openDialog,
@@ -23,6 +23,10 @@ export const Settings: React.FC<{ onClose: () => void }> = ({ onClose }) => {
     "system",
   );
   const [loading, setLoading] = useState(false);
+  const [securityMessage, setSecurityMessage] = useState<{
+    kind: "success" | "error";
+    text: string;
+  } | null>(null);
   const [autostartLoading, setAutostartLoading] = useState(false);
   const [updateLoading, setUpdateLoading] = useState(false);
   const [updateMessage, setUpdateMessage] = useState<string>("");
@@ -60,11 +64,22 @@ export const Settings: React.FC<{ onClose: () => void }> = ({ onClose }) => {
 
   const toggle = async (enabled: boolean) => {
     setLoading(true);
+    setSecurityMessage(null);
     try {
       await invoke<boolean>("set_store_sensitive_in_keyring", { enabled });
       setStoreSensitive(enabled);
-    } catch {
-      // ignore
+      setSecurityMessage({
+        kind: "success",
+        text: enabled
+          ? "Sensitive profile values were moved to OS secure storage."
+          : "Sensitive profile values were restored to profiles.json and removed from OS secure storage.",
+      });
+    } catch (error) {
+      const info = normalizeBackendError(error);
+      setSecurityMessage({
+        kind: "error",
+        text: [info.message, info.hint].filter(Boolean).join(" "),
+      });
     } finally {
       setLoading(false);
     }
@@ -251,6 +266,16 @@ export const Settings: React.FC<{ onClose: () => void }> = ({ onClose }) => {
             Moves sensitive paths out of profiles.json into the OS credential
             store. Toggling migrates all existing profiles immediately.
           </p>
+          {securityMessage && (
+            <p
+              className={`settings-hint ${
+                securityMessage.kind === "error" ? "error" : "muted"
+              }`}
+              role={securityMessage.kind === "error" ? "alert" : "status"}
+            >
+              {securityMessage.text}
+            </p>
+          )}
         </div>
 
         <div className="settings-divider" />
