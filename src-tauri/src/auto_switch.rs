@@ -13,10 +13,22 @@ use crate::commands::profiles::{find_git_root, switch_profile_for_repo};
 use crate::config::store;
 
 #[derive(Clone, Debug)]
-struct ResolvedRule {
-    root_path: PathBuf,
-    profile_id: String,
-    rule_id: String,
+pub(crate) struct ResolvedRule {
+    pub(crate) root_path: PathBuf,
+    pub(crate) profile_id: String,
+    pub(crate) rule_id: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum AutoSwitchDecision {
+    Disabled,
+    MissingRepository { path: PathBuf },
+    AlreadyApplied { repo: PathBuf },
+    Apply {
+        rule_id: String,
+        profile_id: String,
+        repo: PathBuf,
+    },
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -189,100 +201,46 @@ fn handle_event(
         return;
     }
 
-    let mut best_match: Option<(&ResolvedRule, PathBuf)> = None;
-
-    for event_path in &event.paths {
-        // Skip noisy temp/OS/build files — no need to switch for these
-        if should_ignore_path(event_path) {
-            continue;
-        }
-
-        let normalized_event_path = normalize_path(event_path).unwrap_or_else(|| event_path.to_path_buf());
-
-        for rule in rules {
-            if path_starts_with_ci(&normalized_event_path, &rule.root_path) {
-                if let Some((current_best, _)) = best_match.as_ref() {
-                    // Compare by component count (path depth), not byte length.
-                    // Byte length breaks for Unicode path segments on Windows.
-                    if rule.root_path.components().count() > current_best.root_path.components().count() {
-                        best_match = Some((rule, normalized_event_path.clone()));
-                    }
-                } else {
-                    best_match = Some((rule, normalized_event_path.clone()));
-                }
-            }
-        }
-    }
-
-    let Some((match_rule, matched_path)) = best_match else {
+    let Some((match_rule, matched_path)) = select_best_rule(&event.paths, rules) else {
         return;
     };
 
     // Debounce: if this rule already fired recently, skip.
     let now = Instant::now();
-    if let Some(&prev) = last_switch.get(&match_rule.rule_id) {
-        if now.duration_since(prev) < DEBOUNCE_DURATION {
-            return;
-        }
+    if update_debounce(last_switch, &match_rule.rule_id, now) {
+        return;
     }
-    last_switch.insert(match_rule.rule_id.clone(), now);
 
     let Ok(config) = store::load_config(app) else {
         return;
     };
 
-    if !config.settings.auto_switch {
-        return;
-    }
+    let decision = evaluate_match(&config, match_rule, &matched_path, |repo, key| {
+        crate::commands::profiles::read_local_git_config(repo, key)
+    });
 
-    // Find the actual git root from the triggering file path.
-    // The rule's root_path may be a parent directory containing many repos;
-    // we must apply the profile to the specific repo that owns the changed file.
-    let git_root = match find_git_root(&matched_path) {
-        Some(root) => root,
-        None => {
+    let (git_root, profile_id) = match decision {
+        AutoSwitchDecision::Disabled | AutoSwitchDecision::AlreadyApplied { .. } => return,
+        AutoSwitchDecision::MissingRepository { path } => {
             eprintln!(
                 "[auto-switch] no git root found for {}, skipping",
-                matched_path.display()
+                path.display()
             );
             let _ = app.emit(
                 "auto-switch-failed",
                 format!(
                     "No git repository found containing the changed file \"{}\"",
-                    matched_path.display()
+                    path.display()
                 ),
             );
             return;
         }
+        AutoSwitchDecision::Apply {
+            repo, profile_id, ..
+        } => (repo, profile_id),
     };
 
-    // Skip only if this specific repo's local identity already fully matches the profile,
-    // to avoid redundant git writes. A missing local config (None) means we still apply.
-    // We check name, email AND ssh key so that an SSH-only identity change is not skipped.
-    let profile_opt = config.profiles.iter().find(|p| p.id == match_rule.profile_id);
-    if let Some(profile) = profile_opt {
-        let local_name  = crate::commands::profiles::read_local_git_config(&git_root, "user.name");
-        let local_email = crate::commands::profiles::read_local_git_config(&git_root, "user.email");
-        let local_ssh   = crate::commands::profiles::read_local_git_config(&git_root, "core.sshCommand");
-
-        // Build what the expected sshCommand would be for this profile.
-        let expected_ssh = profile.ssh_key_path.as_deref().and_then(|p| {
-            if p.is_empty() { None } else {
-                Some(format!("ssh -i \"{}\" -o IdentitiesOnly=yes", p.replace('\\', "/")))
-            }
-        });
-
-        let name_matches  = local_name.as_deref()  == Some(profile.name.as_str());
-        let email_matches = local_email.as_deref() == Some(profile.email.as_str());
-        let ssh_matches   = local_ssh == expected_ssh;
-
-        if name_matches && email_matches && ssh_matches {
-            // Repo-local config already fully matches — nothing to do.
-            return;
-        }
-    }
-
-    if let Err(error) = switch_profile_for_repo(app.clone(), match_rule.profile_id.clone(), &git_root) {
+    if let Err(error) = switch_profile_for_repo(app.clone(), profile_id.clone(), &git_root) {
         eprintln!("[auto-switch] failed to switch profile: {error}");
         let _ = app.emit("auto-switch-failed", error);
     } else {
@@ -318,6 +276,87 @@ fn handle_event(
                 match_rule.rule_id
             );
         }
+    }
+}
+
+pub(crate) fn select_best_rule<'a>(
+    event_paths: &[PathBuf],
+    rules: &'a [ResolvedRule],
+) -> Option<(&'a ResolvedRule, PathBuf)> {
+    let mut best_match: Option<(&ResolvedRule, PathBuf)> = None;
+    for event_path in event_paths {
+        if should_ignore_path(event_path) {
+            continue;
+        }
+        let normalized = normalize_path(event_path).unwrap_or_else(|| event_path.clone());
+        for rule in rules {
+            if path_starts_with_ci(&normalized, &rule.root_path)
+                && best_match.as_ref().is_none_or(|(current, _)| {
+                    rule.root_path.components().count()
+                        > current.root_path.components().count()
+                })
+            {
+                best_match = Some((rule, normalized.clone()));
+            }
+        }
+    }
+    best_match
+}
+
+pub(crate) fn update_debounce(
+    last_switch: &mut HashMap<String, Instant>,
+    rule_id: &str,
+    now: Instant,
+) -> bool {
+    if last_switch
+        .get(rule_id)
+        .is_some_and(|previous| now.duration_since(*previous) < DEBOUNCE_DURATION)
+    {
+        return true;
+    }
+    last_switch.insert(rule_id.to_string(), now);
+    false
+}
+
+pub(crate) fn evaluate_match<F>(
+    config: &crate::models::AppConfig,
+    rule: &ResolvedRule,
+    matched_path: &Path,
+    mut read_local: F,
+) -> AutoSwitchDecision
+where
+    F: FnMut(&Path, &str) -> Option<String>,
+{
+    if !config.settings.auto_switch {
+        return AutoSwitchDecision::Disabled;
+    }
+    let Some(repo) = find_git_root(matched_path) else {
+        return AutoSwitchDecision::MissingRepository {
+            path: matched_path.to_path_buf(),
+        };
+    };
+
+    if let Some(profile) = config.profiles.iter().find(|profile| profile.id == rule.profile_id) {
+        let expected_ssh = profile.ssh_key_path.as_deref().and_then(|path| {
+            (!path.is_empty()).then(|| {
+                format!(
+                    "ssh -i \"{}\" -o IdentitiesOnly=yes",
+                    path.replace('\\', "/")
+                )
+            })
+        });
+        if read_local(&repo, "user.name").as_deref() == Some(profile.name.as_str())
+            && read_local(&repo, "user.email").as_deref() == Some(profile.email.as_str())
+            && read_local(&repo, "core.sshCommand") == expected_ssh
+        {
+            return AutoSwitchDecision::AlreadyApplied { repo };
+        }
+    }
+
+    AutoSwitchDecision::Apply {
+        rule_id: rule.rule_id.clone(),
+        profile_id: rule.profile_id.clone(),
+        repo,
     }
 }
 
@@ -358,7 +397,7 @@ fn build_watcher_and_rules(
     Ok((watcher, resolved_rules))
 }
 
-fn normalize_path(path: &Path) -> Option<PathBuf> {
+pub(crate) fn normalize_path(path: &Path) -> Option<PathBuf> {
     let canonical = fs::canonicalize(path).ok()?;
     // On Windows, canonicalize() returns \\?\-prefixed extended-length paths.
     // Strip that prefix so starts_with comparisons work correctly.

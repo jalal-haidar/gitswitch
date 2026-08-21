@@ -47,3 +47,35 @@ jobs:
       - name: Run cargo tests
         working-directory: src-tauri
         run: cargo test --workspace --quiet
+
+  native-integration:
+    name: Native integration (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Linux system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libgtk-3-dev \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libglib2.0-dev \
+            pkg-config
+
+      - name: Verify Git is available
+        run: git --version
+
+      - name: Run isolated native workflows
+        working-directory: src-tauri
+        run: cargo test --locked --features native-test-support --test native_workflows

@@ -65,7 +65,16 @@ npm run test:unit -- --run
 # Rust tests
 cd src-tauri
 cargo test --workspace
+
+# Isolated native Git/keyring workflows
+cargo test --locked --features native-test-support --test native_workflows
 ```
+
+Native workflow tests must remain hermetic: use the feature-gated harness for
+temporary repositories, isolated Git environment variables, deterministic
+failure injection, and in-memory credentials. Do not access the developer's
+global Git configuration or OS keyring. The same suite runs on Windows and
+Linux CI; do not add platform-specific exclusions.
 
 ---
 

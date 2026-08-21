@@ -55,7 +55,7 @@ pub struct ScannedRepo {
     pub ssh_command: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GitConfigSnapshot {
     pub user_name: Option<String>,

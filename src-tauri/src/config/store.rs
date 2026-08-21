@@ -77,7 +77,7 @@ pub fn has_transient_snapshot(key: &str) -> bool {
 const CONFIG_FILE_NAME: &str = "profiles.json";
 const KEYRING_SERVICE: &str = "gitswitch";
 
-trait CredentialStore {
+pub(crate) trait CredentialStore {
     fn get(&self, account: &str) -> Result<Option<String>>;
     fn set(&self, account: &str, value: &str) -> Result<()>;
     fn delete(&self, account: &str) -> Result<()>;
@@ -160,7 +160,10 @@ where
     Ok(result)
 }
 
-fn load_config_at(path: &Path, credentials: &dyn CredentialStore) -> Result<AppConfig> {
+pub(crate) fn load_config_at(
+    path: &Path,
+    credentials: &dyn CredentialStore,
+) -> Result<AppConfig> {
     let backup_path = path.with_extension("json.bak");
     if !path.exists() && backup_path.exists() {
         fs::rename(&backup_path, path)
@@ -278,7 +281,7 @@ fn desired_credentials(config: &AppConfig) -> HashMap<String, String> {
     desired
 }
 
-fn persist_config_at(
+pub(crate) fn persist_config_at(
     path: &Path,
     config: &AppConfig,
     credentials: &dyn CredentialStore,

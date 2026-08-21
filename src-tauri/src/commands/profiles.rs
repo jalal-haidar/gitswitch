@@ -2,14 +2,13 @@ use std::path::Path;
 use std::process::Command;
 use std::io::Write;
 
-use crate::git::no_window;
+use crate::git::{self, no_window, GitScope, ProcessGitExecutor};
 use serde::{Serialize, Deserialize};
 use tauri::AppHandle;
 use uuid::Uuid;
 
 use crate::config::store;
 use crate::models::{GitProfile, GitConfigSnapshot};
-use crate::errors::BackendError;
 
 // Server-side validation/sanitization helpers
 fn sanitize_string(s: &str, max_len: usize) -> String {
@@ -246,34 +245,7 @@ pub fn switch_profile_globally(app: AppHandle, id: String) -> Result<(), String>
     let profile = config.profiles.iter().find(|p| p.id == id)
         .ok_or_else(|| format!("Profile not found: {id}"))?;
         
-    // Execute git config --global commands
-    execute_git_command(vec!["config", "--global", "user.name", &profile.name])?;
-    execute_git_command(vec!["config", "--global", "user.email", &profile.email])?;
-    
-    if let Some(ref gpg_key) = profile.gpg_key_id {
-        if !gpg_key.is_empty() {
-            execute_git_command(vec!["config", "--global", "user.signingkey", gpg_key])?;
-            execute_git_command(vec!["config", "--global", "commit.gpgsign", "true"])?;
-        } else {
-            execute_git_command(vec!["config", "--global", "--unset", "user.signingkey"]).ok();
-            execute_git_command(vec!["config", "--global", "commit.gpgsign", "false"]).ok();
-        }
-    } else {
-        execute_git_command(vec!["config", "--global", "--unset", "user.signingkey"]).ok();
-        execute_git_command(vec!["config", "--global", "commit.gpgsign", "false"]).ok();
-    }
-
-    // Apply SSH key if configured
-    match profile.ssh_key_path.as_deref() {
-        Some(ssh_path) if !ssh_path.is_empty() => {
-            let normalized = ssh_path.replace('\\', "/");
-            let ssh_cmd = format!("ssh -i \"{}\" -o IdentitiesOnly=yes", normalized);
-            execute_git_command(vec!["config", "--global", "core.sshCommand", &ssh_cmd])?;
-        }
-        _ => {
-            execute_git_command(vec!["config", "--global", "--unset", "core.sshCommand"]).ok();
-        }
-    }
+    git::apply_profile(&ProcessGitExecutor::default(), &GitScope::Global, profile)?;
 
     store::update_config(&app, |config| {
         if !config.profiles.iter().any(|profile| profile.id == id) {
@@ -297,50 +269,13 @@ pub fn switch_profile_for_repo(app: AppHandle, id: String, repo_path: &Path) -> 
     // Capture a transient snapshot of repo-local git config before mutating it —
     // but only if there isn't already one (preserve the pre-switch baseline so
     // repeated rapid auto-switches don't wipe out the original values).
+    let scope = GitScope::Local(repo_path.to_path_buf());
+    let executor = ProcessGitExecutor::default();
     if !store::has_transient_snapshot(&repo_path.to_string_lossy()) {
-        let snapshot = GitConfigSnapshot {
-            user_name: capture_git_config_value_in_dir(vec!["config", "--local", "--get", "user.name"], Some(repo_path))?,
-            user_email: capture_git_config_value_in_dir(vec!["config", "--local", "--get", "user.email"], Some(repo_path))?,
-            user_signingkey: capture_git_config_value_in_dir(vec!["config", "--local", "--get", "user.signingkey"], Some(repo_path))?,
-            commit_gpgsign: capture_git_config_value_in_dir(vec!["config", "--local", "--get", "commit.gpgsign"], Some(repo_path))?,
-            core_ssh_command: capture_git_config_value_in_dir(vec!["config", "--local", "--get", "core.sshCommand"], Some(repo_path))?,
-        };
+        let snapshot = git::read_snapshot(&executor, &scope)?;
         store::set_transient_snapshot(&repo_path.to_string_lossy(), snapshot);
     }
-
-    execute_git_command_in_dir(vec!["config", "--local", "user.name", &profile.name], Some(repo_path))?;
-    execute_git_command_in_dir(vec!["config", "--local", "user.email", &profile.email], Some(repo_path))?;
-
-    if let Some(ref gpg_key) = profile.gpg_key_id {
-        if !gpg_key.is_empty() {
-            execute_git_command_in_dir(vec!["config", "--local", "user.signingkey", gpg_key], Some(repo_path))?;
-            execute_git_command_in_dir(vec!["config", "--local", "commit.gpgsign", "true"], Some(repo_path))?;
-        } else {
-            execute_git_command_in_dir(vec!["config", "--local", "--unset", "user.signingkey"], Some(repo_path)).ok();
-            execute_git_command_in_dir(vec!["config", "--local", "commit.gpgsign", "false"], Some(repo_path)).ok();
-        }
-    } else {
-        execute_git_command_in_dir(vec!["config", "--local", "--unset", "user.signingkey"], Some(repo_path)).ok();
-        execute_git_command_in_dir(vec!["config", "--local", "commit.gpgsign", "false"], Some(repo_path)).ok();
-    }
-
-    // Apply SSH key per-repo if configured
-    match profile.ssh_key_path.as_deref() {
-        Some(ssh_path) if !ssh_path.is_empty() => {
-            if !std::path::Path::new(ssh_path).exists() {
-                return Err(format!(
-                    "SSH key file not found for profile '{}': {}. Edit the profile to fix the path.",
-                    profile.label, ssh_path
-                ));
-            }
-            let normalized = ssh_path.replace('\\', "/");
-            let ssh_cmd = format!("ssh -i \"{}\" -o IdentitiesOnly=yes", normalized);
-            execute_git_command_in_dir(vec!["config", "--local", "core.sshCommand", &ssh_cmd], Some(repo_path))?;
-        }
-        _ => {
-            execute_git_command_in_dir(vec!["config", "--local", "--unset", "core.sshCommand"], Some(repo_path)).ok();
-        }
-    }
+    git::apply_profile(&executor, &scope, profile)?;
 
     store::update_config(&app, |config| {
         if !config.profiles.iter().any(|profile| profile.id == id) {
@@ -401,52 +336,6 @@ pub fn apply_identity(_app: AppHandle, name: String, email: String, gpg_key: Opt
 }
 
 // NOTE: GitConfigSnapshot is defined in `models.rs` and imported above.
-
-fn capture_git_config_value_in_dir(args: Vec<&str>, cwd: Option<&Path>) -> Result<Option<String>, String> {
-    let mut command = Command::new("git");
-    command.args(&args);
-    if let Some(path) = cwd {
-        command.current_dir(path);
-    }
-    no_window(&mut command);
-
-    let output = command.output().map_err(|e| {
-        if e.kind() == std::io::ErrorKind::NotFound {
-            BackendError::git_not_found().to_string()
-        } else {
-            BackendError::io_error(format!("Failed to execute git command: {}", e)).to_string()
-        }
-    })?;
-
-    if !output.status.success() {
-        return Ok(None);
-    }
-
-    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-    Ok(Some(stdout.trim().to_string()))
-}
-
-fn capture_git_config_value(args: Vec<&str>) -> Result<Option<String>, String> {
-    let mut command = Command::new("git");
-    command.args(&args);
-    no_window(&mut command);
-
-    let output = command.output().map_err(|e| {
-        if e.kind() == std::io::ErrorKind::NotFound {
-            BackendError::git_not_found().to_string()
-        } else {
-            BackendError::io_error(format!("Failed to execute git command: {}", e)).to_string()
-        }
-    })?;
-
-    if !output.status.success() {
-        // If value isn't set, git returns non-zero; treat as None
-        return Ok(None);
-    }
-
-    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-    Ok(Some(stdout.trim().to_string()))
-}
 
 const EXPORT_VERSION: u32 = 1;
 
@@ -542,19 +431,7 @@ pub fn snapshot_global_git_config(_app: AppHandle) -> Result<GitConfigSnapshot, 
 }
 
 pub fn snapshot_global_git_config_inner() -> Result<GitConfigSnapshot, String> {
-    let name = capture_git_config_value(vec!["config", "--global", "--get", "user.name"])?;
-    let email = capture_git_config_value(vec!["config", "--global", "--get", "user.email"])?;
-    let signing = capture_git_config_value(vec!["config", "--global", "--get", "user.signingkey"])?;
-    let gpgsign = capture_git_config_value(vec!["config", "--global", "--get", "commit.gpgsign"])?;
-    let core_ssh = capture_git_config_value(vec!["config", "--global", "--get", "core.sshCommand"])?;
-
-    Ok(GitConfigSnapshot {
-        user_name: name,
-        user_email: email,
-        user_signingkey: signing,
-        commit_gpgsign: gpgsign,
-        core_ssh_command: core_ssh,
-    })
+    git::read_snapshot(&ProcessGitExecutor::default(), &GitScope::Global)
 }
 
 #[tauri::command]
@@ -563,46 +440,11 @@ pub fn restore_global_git_config(_app: AppHandle, snapshot: GitConfigSnapshot) -
 }
 
 pub fn restore_global_git_config_inner(snapshot: GitConfigSnapshot) -> Result<(), String> {
-    // name
-    if let Some(name) = snapshot.user_name {
-        execute_git_command(vec!["config", "--global", "user.name", &name])?;
-    } else {
-        execute_git_command(vec!["config", "--global", "--unset", "user.name"]).ok();
-    }
-
-    // email
-    if let Some(email) = snapshot.user_email {
-        execute_git_command(vec!["config", "--global", "user.email", &email])?;
-    } else {
-        execute_git_command(vec!["config", "--global", "--unset", "user.email"]).ok();
-    }
-
-    // signing key
-    if let Some(gpg) = snapshot.user_signingkey {
-        if !gpg.is_empty() {
-            execute_git_command(vec!["config", "--global", "user.signingkey", &gpg])?;
-            execute_git_command(vec!["config", "--global", "commit.gpgsign", "true"]).ok();
-        }
-    } else {
-        execute_git_command(vec!["config", "--global", "--unset", "user.signingkey"]).ok();
-        execute_git_command(vec!["config", "--global", "commit.gpgsign", "false"]).ok();
-    }
-
-    if let Some(gpgsign) = snapshot.commit_gpgsign {
-        // attempt to set to the snapshot value (true/false)
-        execute_git_command(vec!["config", "--global", "commit.gpgsign", &gpgsign])?;
-    }
-
-    // core.sshCommand
-    if let Some(ssh_cmd) = snapshot.core_ssh_command {
-        if !ssh_cmd.is_empty() {
-            execute_git_command(vec!["config", "--global", "core.sshCommand", &ssh_cmd])?;
-        }
-    } else {
-        execute_git_command(vec!["config", "--global", "--unset", "core.sshCommand"]).ok();
-    }
-
-    Ok(())
+    git::restore_snapshot(
+        &ProcessGitExecutor::default(),
+        &GitScope::Global,
+        &snapshot,
+    )
 }
 
 /// Walk up from `path` until we find a directory that contains `.git`.
@@ -622,9 +464,10 @@ pub(crate) fn find_git_root(path: &Path) -> Option<std::path::PathBuf> {
 /// Read a single key from a repo's *local* git config. Returns None if unset or on error.
 /// Public so `auto_switch` can use it for the per-repo identity check.
 pub(crate) fn read_local_git_config(repo_path: &Path, key: &str) -> Option<String> {
-    capture_git_config_value_in_dir(
-        vec!["config", "--local", "--get", key],
-        Some(repo_path),
+    git::read_value(
+        &ProcessGitExecutor::default(),
+        &GitScope::Local(repo_path.to_path_buf()),
+        key,
     )
     .ok()
     .flatten()
@@ -650,19 +493,16 @@ pub fn get_repo_local_config(_app: AppHandle, repo_path: String) -> Result<RepoL
     let git_root = find_git_root(path)
         .ok_or_else(|| format!("Not a git repository: {}", repo_path))?;
 
-    let read = |key: &str| -> Result<Option<String>, String> {
-        capture_git_config_value_in_dir(
-            vec!["config", "--local", "--get", key],
-            Some(&git_root),
-        )
-    };
-
+    let snapshot = git::read_snapshot(
+        &ProcessGitExecutor::default(),
+        &GitScope::Local(git_root),
+    )?;
     Ok(RepoLocalConfig {
-        user_name: read("user.name")?,
-        user_email: read("user.email")?,
-        user_signingkey: read("user.signingkey")?,
-        commit_gpgsign: read("commit.gpgsign")?,
-        core_ssh_command: read("core.sshCommand")?,
+        user_name: snapshot.user_name,
+        user_email: snapshot.user_email,
+        user_signingkey: snapshot.user_signingkey,
+        commit_gpgsign: snapshot.commit_gpgsign,
+        core_ssh_command: snapshot.core_ssh_command,
     })
 }
 
@@ -692,38 +532,11 @@ pub fn restore_repo_snapshot(app: AppHandle, repo_path: String) -> Result<(), St
     let snap_opt = crate::config::store::take_transient_snapshot(&git_root.to_string_lossy());
     let snapshot = snap_opt.ok_or_else(|| "No transient snapshot found for this repository".to_string())?;
 
-    // Restore fields (set/unset as necessary)
-    if let Some(name) = snapshot.user_name {
-        execute_git_command_in_dir(vec!["config", "--local", "user.name", &name], Some(&git_root))?;
-    } else {
-        execute_git_command_in_dir(vec!["config", "--local", "--unset", "user.name"], Some(&git_root)).ok();
-    }
-
-    if let Some(email) = snapshot.user_email {
-        execute_git_command_in_dir(vec!["config", "--local", "user.email", &email], Some(&git_root))?;
-    } else {
-        execute_git_command_in_dir(vec!["config", "--local", "--unset", "user.email"], Some(&git_root)).ok();
-    }
-
-    if let Some(signing) = snapshot.user_signingkey {
-        if !signing.is_empty() {
-            execute_git_command_in_dir(vec!["config", "--local", "user.signingkey", &signing], Some(&git_root))?;
-            execute_git_command_in_dir(vec!["config", "--local", "commit.gpgsign", "true"], Some(&git_root))?;
-        }
-    } else {
-        execute_git_command_in_dir(vec!["config", "--local", "--unset", "user.signingkey"], Some(&git_root)).ok();
-        execute_git_command_in_dir(vec!["config", "--local", "commit.gpgsign", "false"], Some(&git_root)).ok();
-    }
-
-    if let Some(sshcmd) = snapshot.core_ssh_command {
-        if !sshcmd.is_empty() {
-            execute_git_command_in_dir(vec!["config", "--local", "core.sshCommand", &sshcmd], Some(&git_root))?;
-        } else {
-            execute_git_command_in_dir(vec!["config", "--local", "--unset", "core.sshCommand"], Some(&git_root)).ok();
-        }
-    } else {
-        execute_git_command_in_dir(vec!["config", "--local", "--unset", "core.sshCommand"], Some(&git_root)).ok();
-    }
+    git::restore_snapshot(
+        &ProcessGitExecutor::default(),
+        &GitScope::Local(git_root),
+        &snapshot,
+    )?;
 
     crate::tray::refresh_tray(&app);
     Ok(())
@@ -904,35 +717,11 @@ fn execute_git_command(args: Vec<&str>) -> Result<(), String> {
 }
 
 fn execute_git_command_in_dir(args: Vec<&str>, cwd: Option<&Path>) -> Result<(), String> {
-    // Try to spawn `git` and handle common errors with structured hints
-    let mut command = Command::new("git");
-    command.args(&args);
-    if let Some(path) = cwd {
-        command.current_dir(path);
-    }
-    no_window(&mut command);
-
-    let output = command.output().map_err(|e| {
-        // If git isn't found on PATH, return a helpful BackendError serialized to string
-        if e.kind() == std::io::ErrorKind::NotFound {
-            BackendError::git_not_found().to_string()
-        } else {
-            BackendError::io_error(format!("Failed to execute git command: {}", e)).to_string()
-        }
-    })?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-        // Detect permission denied
-        let stderr_l = stderr.to_lowercase();
-        if stderr_l.contains("permission denied") || stderr_l.contains("cannot open") {
-            return Err(BackendError::permission_denied(stderr).to_string());
-        }
-
-        return Err(BackendError::git_failed(stderr).to_string());
-    }
-
-    Ok(())
+    git::execute_checked(
+        &ProcessGitExecutor::default(),
+        &git::args(args),
+        cwd,
+    )
 }
 
 #[cfg(test)]
@@ -947,15 +736,6 @@ mod tests {
                 // the error string should include serialized BackendError with kind GitFailed
                 assert!(err.contains("GitFailed") || err.to_lowercase().contains("git command failed"), "unexpected error payload: {}", err);
             }
-    }
-
-    #[test]
-    fn snapshot_and_restore_roundtrip() {
-        // Snapshot current global git config and immediately restore it.
-        // This should succeed and leave the user's global config unchanged.
-        let snap = snapshot_global_git_config_inner().expect("snapshot failed");
-        let res = restore_global_git_config_inner(snap);
-        assert!(res.is_ok(), "restore failed: {:?}", res);
     }
 
     // ── sanitize_string ──────────────────────────────────────────

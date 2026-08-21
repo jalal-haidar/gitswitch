@@ -6,6 +6,10 @@ mod auto_switch;
 mod git;
 mod tray;
 
+#[cfg(feature = "native-test-support")]
+#[doc(hidden)]
+pub mod native_test_support;
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let tauri_app = tauri::Builder::default()

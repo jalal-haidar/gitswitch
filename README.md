@@ -126,7 +126,15 @@ npm run test:unit -- --run
 # Rust
 cd src-tauri
 cargo test --workspace
+
+# Isolated native Git/keyring workflows
+cargo test --locked --features native-test-support --test native_workflows
 ```
+
+The native workflow suite uses temporary repositories, a private Git global
+configuration, and an in-memory credential store. It never reads or writes your
+real Git configuration or OS keyring. CI runs this suite on both Windows and
+Linux without platform-specific test exclusions.
 
 ---
 
