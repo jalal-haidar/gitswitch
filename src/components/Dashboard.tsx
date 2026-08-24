@@ -40,6 +40,7 @@ export const Dashboard: React.FC = () => {
   const {
     profiles,
     activeProfileId,
+    hasGlobalSnapshot,
     loading,
     fetchProfiles,
     fetchDirectoryRules,
@@ -50,6 +51,10 @@ export const Dashboard: React.FC = () => {
     scanRepos,
     applyProfileToRepo,
     getRepoLocalConfig,
+    restoreGlobalSnapshot,
+    discardGlobalSnapshot,
+    restoreRepoSnapshot,
+    discardRepoSnapshot,
   } = useProfileStore();
   const [showCreate, setShowCreate] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -68,6 +73,7 @@ export const Dashboard: React.FC = () => {
   const [applyTargets, setApplyTargets] = useState<Record<string, string>>({});
   const [applyingPath, setApplyingPath] = useState<string | null>(null);
   const [appVersion, setAppVersion] = useState<string>("");
+  const [globalRecoveryBusy, setGlobalRecoveryBusy] = useState(false);
 
   // Scanner search + pagination
   const [scanSearch, setScanSearch] = useState("");
@@ -523,6 +529,10 @@ export const Dashboard: React.FC = () => {
         message: `Applied "${label}" to ${repoName}`,
         kind: "success",
       });
+      setScanSnapshots((previous) => ({
+        ...previous,
+        [repoPath]: true,
+      }));
       void refreshSelectedRepoConfig(repoPath);
     } catch (e) {
       toast.show({
@@ -668,6 +678,68 @@ export const Dashboard: React.FC = () => {
         <h1 className="text-gradient">GitSwitch</h1>
         <p>Manage your Git identities with ease.</p>
       </header>
+
+      {hasGlobalSnapshot && (
+        <aside className="glass-panel global-recovery-banner" role="status">
+          <div className="global-recovery-copy">
+            <strong>Previous global Git config is available</strong>
+            <span>
+              Restore the durable baseline from before the latest successful
+              global switch, or discard it.
+            </span>
+          </div>
+          <div className="global-recovery-actions">
+            <button
+              className="btn btn-primary btn-sm"
+              type="button"
+              disabled={globalRecoveryBusy}
+              onClick={async () => {
+                setGlobalRecoveryBusy(true);
+                try {
+                  await restoreGlobalSnapshot();
+                  toast.show({
+                    message: "Restored previous global Git config",
+                    kind: "success",
+                  });
+                } catch (error) {
+                  toast.show({
+                    message: `Restore failed: ${friendlyErrorMessage(error)}`,
+                    kind: "error",
+                  });
+                } finally {
+                  setGlobalRecoveryBusy(false);
+                }
+              }}
+            >
+              {globalRecoveryBusy ? "Working…" : "Restore"}
+            </button>
+            <button
+              className="btn btn-secondary btn-sm"
+              type="button"
+              disabled={globalRecoveryBusy}
+              onClick={async () => {
+                setGlobalRecoveryBusy(true);
+                try {
+                  await discardGlobalSnapshot();
+                  toast.show({
+                    message: "Discarded global recovery snapshot",
+                    kind: "success",
+                  });
+                } catch (error) {
+                  toast.show({
+                    message: `Discard failed: ${friendlyErrorMessage(error)}`,
+                    kind: "error",
+                  });
+                } finally {
+                  setGlobalRecoveryBusy(false);
+                }
+              }}
+            >
+              Discard
+            </button>
+          </div>
+        </aside>
+      )}
 
       <section>
         <div className="section-header">
@@ -1067,21 +1139,14 @@ export const Dashboard: React.FC = () => {
                           }
                           onClick={async () => {
                             try {
-                              await useProfileStore
-                                .getState()
-                                .restoreRepoSnapshot(repo.path);
+                              await restoreRepoSnapshot(repo.path);
                               toast.show({
                                 message: "Restored repository snapshot",
                                 kind: "success",
                               });
-                              // refresh snapshot state for this repo
-                              const b = await invoke<boolean>(
-                                "has_repo_snapshot",
-                                { repoPath: repo.path },
-                              );
                               setScanSnapshots((s) => ({
                                 ...s,
-                                [repo.path]: b,
+                                [repo.path]: false,
                               }));
                               void refreshSelectedRepoConfig(repo.path);
                               // refresh scanned repo list UI
@@ -1095,6 +1160,36 @@ export const Dashboard: React.FC = () => {
                           }}
                         >
                           Restore
+                        </button>
+                        <button
+                          className="btn btn-secondary btn-sm"
+                          type="button"
+                          disabled={!scanSnapshots[repo.path]}
+                          title={
+                            !scanSnapshots[repo.path]
+                              ? "No snapshot available"
+                              : "Discard repository snapshot"
+                          }
+                          onClick={async () => {
+                            try {
+                              await discardRepoSnapshot(repo.path);
+                              setScanSnapshots((previous) => ({
+                                ...previous,
+                                [repo.path]: false,
+                              }));
+                              toast.show({
+                                message: "Discarded repository snapshot",
+                                kind: "success",
+                              });
+                            } catch (error) {
+                              toast.show({
+                                message: `Discard failed: ${friendlyErrorMessage(error)}`,
+                                kind: "error",
+                              });
+                            }
+                          }}
+                        >
+                          Discard
                         </button>
                       </div>
                     </div>

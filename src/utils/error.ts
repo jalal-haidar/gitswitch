@@ -3,6 +3,8 @@ export type BackendError = {
   message: string;
   hint?: string;
   details?: string;
+  operationFailure?: string;
+  rollbackFailure?: string;
 };
 
 export interface NormalizedBackendError {
@@ -11,6 +13,8 @@ export interface NormalizedBackendError {
   hint?: string;
   details?: string;
   kind?: string;
+  operationFailure?: string;
+  rollbackFailure?: string;
 }
 
 export function normalizeBackendError(e: unknown): NormalizedBackendError {
@@ -32,6 +36,7 @@ export function normalizeBackendError(e: unknown): NormalizedBackendError {
         const message = (() => {
           const pm = parsed.message || "";
           const pd = parsed.details || "";
+          if (parsed.operationFailure) return parsed.operationFailure;
           if (pm && pm !== "Git command failed") return pm;
           if (pd && pd.trim() !== "") return pd;
           return pm || "An error occurred";
@@ -42,6 +47,8 @@ export function normalizeBackendError(e: unknown): NormalizedBackendError {
           hint: parsed.hint,
           details: parsed.details,
           kind: parsed.kind,
+          operationFailure: parsed.operationFailure,
+          rollbackFailure: parsed.rollbackFailure,
         };
       } catch (_) {
         // Try to extract JSON substring from strings like "Error: {...}" or wrapped values
@@ -53,6 +60,7 @@ export function normalizeBackendError(e: unknown): NormalizedBackendError {
             const message = (() => {
               const pm = parsed.message || "";
               const pd = parsed.details || "";
+              if (parsed.operationFailure) return parsed.operationFailure;
               if (pm && pm !== "Git command failed") return pm;
               if (pd && pd.trim() !== "") return pd;
               return pm || "An error occurred";
@@ -63,6 +71,8 @@ export function normalizeBackendError(e: unknown): NormalizedBackendError {
               hint: parsed.hint,
               details: parsed.details,
               kind: parsed.kind,
+              operationFailure: parsed.operationFailure,
+              rollbackFailure: parsed.rollbackFailure,
             };
           } catch {
             // fallthrough to plain string
@@ -81,6 +91,14 @@ export function normalizeBackendError(e: unknown): NormalizedBackendError {
           hint: typeof obj.hint === "string" ? obj.hint : undefined,
           details: typeof obj.details === "string" ? obj.details : undefined,
           kind: obj.kind,
+          operationFailure:
+            typeof obj.operationFailure === "string"
+              ? obj.operationFailure
+              : undefined,
+          rollbackFailure:
+            typeof obj.rollbackFailure === "string"
+              ? obj.rollbackFailure
+              : undefined,
         };
       }
     }
@@ -93,5 +111,8 @@ export function normalizeBackendError(e: unknown): NormalizedBackendError {
 
 /** Extract just the user-facing message from any backend error. */
 export function friendlyErrorMessage(e: unknown): string {
-  return normalizeBackendError(e).message;
+  const info = normalizeBackendError(e);
+  return info.rollbackFailure
+    ? `${info.message}. Rollback also failed: ${info.rollbackFailure}`
+    : info.message;
 }

@@ -10,12 +10,7 @@ import {
   Copy,
   FolderInput,
 } from "lucide-react";
-import {
-  GitProfile,
-  GitConfigSnapshot,
-  useProfileStore,
-} from "../stores/useProfileStore";
-import { invoke } from "@tauri-apps/api/core";
+import { GitProfile, useProfileStore } from "../stores/useProfileStore";
 import { open as openFolderPicker } from "@tauri-apps/plugin-dialog";
 import { useToast } from "./ui/useToast";
 import ConfirmModal from "./ui/ConfirmModal";
@@ -29,13 +24,17 @@ interface ProfileCardProps {
 
 export const ProfileCard: React.FC<ProfileCardProps> = React.memo(
   ({ profile, isActive, onEdit }) => {
-    const { deleteProfile, addProfile, loading, applyProfileToRepo } =
-      useProfileStore();
+    const {
+      deleteProfile,
+      addProfile,
+      loading,
+      applyProfileToRepo,
+      switchProfileGlobally,
+      restoreGlobalSnapshot,
+    } = useProfileStore();
     const toast = useToast();
     const [confirmOpen, setConfirmOpen] = React.useState(false);
     const [confirmBusy, setConfirmBusy] = React.useState(false);
-    const [pendingSnapshot, setPendingSnapshot] =
-      React.useState<GitConfigSnapshot | null>(null);
     const [deleteConfirmOpen, setDeleteConfirmOpen] = React.useState(false);
     const [applyBusy, setApplyBusy] = React.useState(false);
     const [dupBusy, setDupBusy] = React.useState(false);
@@ -105,23 +104,7 @@ export const ProfileCard: React.FC<ProfileCardProps> = React.memo(
             <>
               <button
                 className="btn btn-primary"
-                onClick={async () => {
-                  try {
-                    setConfirmBusy(true);
-                    const snapshot = await invoke<GitConfigSnapshot>(
-                      "snapshot_global_git_config",
-                    );
-                    setPendingSnapshot(snapshot);
-                    setConfirmBusy(false);
-                    setConfirmOpen(true);
-                  } catch (e) {
-                    setConfirmBusy(false);
-                    toast.show({
-                      message: `Failed to prepare switch: ${friendlyErrorMessage(e)}`,
-                      kind: "error",
-                    });
-                  }
-                }}
+                onClick={() => setConfirmOpen(true)}
                 disabled={loading}
               >
                 Switch to Profile
@@ -138,8 +121,7 @@ export const ProfileCard: React.FC<ProfileCardProps> = React.memo(
                 onConfirm={async () => {
                   setConfirmBusy(true);
                   try {
-                    await invoke("switch_profile_globally", { id: profile.id });
-                    await useProfileStore.getState().fetchProfiles();
+                    await switchProfileGlobally(profile.id);
 
                     toast.show({
                       message: `Switched to ${profile.label}`,
@@ -149,18 +131,11 @@ export const ProfileCard: React.FC<ProfileCardProps> = React.memo(
                           label: "Undo",
                           onClick: async () => {
                             try {
-                              if (pendingSnapshot) {
-                                await invoke("restore_global_git_config", {
-                                  snapshot: pendingSnapshot,
-                                });
-                                await useProfileStore
-                                  .getState()
-                                  .fetchProfiles();
-                                toast.show({
-                                  message: "Restored previous Git config",
-                                  kind: "success",
-                                });
-                              }
+                              await restoreGlobalSnapshot();
+                              toast.show({
+                                message: "Restored previous Git config",
+                                kind: "success",
+                              });
                             } catch (err) {
                               toast.show({
                                 message: `Restore failed: ${friendlyErrorMessage(err)}`,
@@ -179,7 +154,6 @@ export const ProfileCard: React.FC<ProfileCardProps> = React.memo(
                   } finally {
                     setConfirmBusy(false);
                     setConfirmOpen(false);
-                    setPendingSnapshot(null);
                   }
                 }}
               />

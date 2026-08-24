@@ -12,7 +12,10 @@ use std::time::{Duration, Instant};
 use anyhow::{anyhow, Result};
 
 use crate::auto_switch::{self, AutoSwitchDecision, ResolvedRule};
-use crate::config::store::{self, CredentialStore};
+use crate::config::{
+    snapshots,
+    store::{self, CredentialStore},
+};
 use crate::git::{self, GitCommandOutput, GitExecutor, GitScope, ProcessGitExecutor};
 
 pub use crate::models::{AppConfig, AppSettings, DirectoryRule, GitConfigSnapshot, GitProfile};
@@ -44,6 +47,9 @@ pub struct RecordedGitCall {
 struct HarnessGitExecutor {
     process: ProcessGitExecutor,
     fail_next_write: Mutex<Option<String>>,
+    mutation_count: Mutex<usize>,
+    fail_mutations: Mutex<HashSet<usize>>,
+    skip_mutations: Mutex<HashSet<usize>>,
     calls: Mutex<Vec<RecordedGitCall>>,
 }
 
@@ -68,11 +74,33 @@ impl GitExecutor for HarnessGitExecutor {
         });
 
         if let Some(key) = Self::mutation_key(args) {
+            let ordinal = {
+                let mut count = self.mutation_count.lock().unwrap();
+                *count += 1;
+                *count
+            };
+            if self.fail_mutations.lock().unwrap().remove(&ordinal) {
+                return Ok(GitCommandOutput {
+                    success: false,
+                    exit_code: Some(2),
+                    stdout: String::new(),
+                    stderr: format!("injected Git failure for mutation {ordinal} ({key})"),
+                });
+            }
+            if self.skip_mutations.lock().unwrap().remove(&ordinal) {
+                return Ok(GitCommandOutput {
+                    success: true,
+                    exit_code: Some(0),
+                    stdout: String::new(),
+                    stderr: String::new(),
+                });
+            }
             let mut failure = self.fail_next_write.lock().unwrap();
             if failure.as_deref() == Some(key) {
                 *failure = None;
                 return Ok(GitCommandOutput {
                     success: false,
+                    exit_code: Some(2),
                     stdout: String::new(),
                     stderr: format!("injected Git failure for {key}"),
                 });
@@ -116,6 +144,9 @@ impl GitSandbox {
         let executor = HarnessGitExecutor {
             process: ProcessGitExecutor::isolated(environment.clone()),
             fail_next_write: Mutex::new(None),
+            mutation_count: Mutex::new(0),
+            fail_mutations: Mutex::new(HashSet::new()),
+            skip_mutations: Mutex::new(HashSet::new()),
             calls: Mutex::new(Vec::new()),
         };
 
@@ -197,6 +228,16 @@ impl GitSandbox {
         *self.executor.fail_next_write.lock().unwrap() = Some(key.to_string());
     }
 
+    pub fn fail_mutations(&self, ordinals: &[usize]) {
+        *self.executor.mutation_count.lock().unwrap() = 0;
+        *self.executor.fail_mutations.lock().unwrap() = ordinals.iter().copied().collect();
+    }
+
+    pub fn skip_mutations(&self, ordinals: &[usize]) {
+        *self.executor.mutation_count.lock().unwrap() = 0;
+        *self.executor.skip_mutations.lock().unwrap() = ordinals.iter().copied().collect();
+    }
+
     pub fn calls(&self) -> Vec<RecordedGitCall> {
         self.executor.calls.lock().unwrap().clone()
     }
@@ -219,6 +260,67 @@ impl GitSandbox {
 
     pub fn guard_bytes(&self) -> Result<Vec<u8>> {
         Ok(fs::read(&self.guard_config)?)
+    }
+}
+
+pub struct SnapshotHarness {
+    root: TempRoot,
+    path: PathBuf,
+}
+
+impl SnapshotHarness {
+    pub fn new() -> Result<Self> {
+        let root = TempRoot::new("native-snapshots")?;
+        let path = root.path().join("git-snapshots.json");
+        Ok(Self { root, path })
+    }
+
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+
+    pub fn root(&self) -> &Path {
+        self.root.path()
+    }
+
+    pub fn global(&self) -> Result<Option<GitConfigSnapshot>, String> {
+        Ok(snapshots::load_at(&self.path)
+            .map_err(|error| error.to_string())?
+            .global)
+    }
+
+    pub fn swap_global(
+        &self,
+        replacement: Option<GitConfigSnapshot>,
+    ) -> Result<Option<GitConfigSnapshot>, String> {
+        let mut document = snapshots::load_at(&self.path).map_err(|error| error.to_string())?;
+        let previous = std::mem::replace(&mut document.global, replacement);
+        snapshots::persist_at(&self.path, &document).map_err(|error| error.to_string())?;
+        Ok(previous)
+    }
+
+    pub fn repository(&self, repository: &Path) -> Result<Option<GitConfigSnapshot>, String> {
+        let key = snapshots::normalize_repo_key(repository)?;
+        Ok(snapshots::load_at(&self.path)
+            .map_err(|error| error.to_string())?
+            .repositories
+            .get(&key)
+            .cloned())
+    }
+
+    pub fn swap_repository(
+        &self,
+        repository: &Path,
+        replacement: Option<GitConfigSnapshot>,
+    ) -> Result<Option<GitConfigSnapshot>, String> {
+        let key = snapshots::normalize_repo_key(repository)?;
+        let mut document = snapshots::load_at(&self.path).map_err(|error| error.to_string())?;
+        let previous = match replacement {
+            Some(snapshot) => document.repositories.insert(key, snapshot),
+            None => document.repositories.remove(&key),
+        };
+        snapshots::persist_at(&self.path, &document).map_err(|error| error.to_string())?;
+        Ok(previous)
     }
 }
 

@@ -1,7 +1,7 @@
-use tauri::{AppHandle, Manager, Emitter};
-use tauri::menu::{Menu, MenuItem, CheckMenuItem, PredefinedMenuItem};
-use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use image::{ImageBuffer, ImageEncoder, Rgba, RgbaImage};
+use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem};
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+use tauri::{AppHandle, Emitter, Manager};
 
 use crate::config::store;
 
@@ -26,17 +26,17 @@ fn generate_colored_icon(color: &str) -> Option<tauri::image::Image<'static>> {
     let size = 32u32;
     let radius = 12.0f32;
     let center = (size / 2) as f32;
-    
+
     let (r, g, b) = parse_hex_color(color);
     let mut img: RgbaImage = ImageBuffer::new(size, size);
-    
+
     // Draw a filled circle
     for y in 0..size {
         for x in 0..size {
             let dx = x as f32 - center;
             let dy = y as f32 - center;
             let distance = (dx * dx + dy * dy).sqrt();
-            
+
             if distance <= radius {
                 // Filled circle with profile color
                 img.put_pixel(x, y, Rgba([r, g, b, 255]));
@@ -48,7 +48,7 @@ fn generate_colored_icon(color: &str) -> Option<tauri::image::Image<'static>> {
             // else: transparent (default)
         }
     }
-    
+
     // Encode to PNG bytes
     let mut png_bytes = Vec::new();
     if image::codecs::png::PngEncoder::new(&mut png_bytes)
@@ -57,7 +57,7 @@ fn generate_colored_icon(color: &str) -> Option<tauri::image::Image<'static>> {
     {
         return None;
     }
-    
+
     tauri::image::Image::from_bytes(&png_bytes).ok()
 }
 
@@ -139,12 +139,12 @@ pub fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
     let menu = build_tray_menu(app.handle())?;
 
     let config = store::load_config(app.handle()).unwrap_or_default();
-    
+
     // Compute a safe fallback icon once — avoids unwrap() panics if no default icon is set.
     // We generate a neutral grey circle rather than using default_window_icon()
     // because Image::new() borrows and can't produce a 'static lifetime.
-    let fallback_icon: tauri::image::Image<'static> =
-        generate_colored_icon("#6B7280").unwrap_or_else(|| {
+    let fallback_icon: tauri::image::Image<'static> = generate_colored_icon("#6B7280")
+        .unwrap_or_else(|| {
             // 1x1 transparent pixel — absolute last resort so we never panic
             tauri::image::Image::new(&[0, 0, 0, 0], 1, 1)
         });
@@ -152,8 +152,7 @@ pub fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
     // Get initial icon and tooltip from active profile
     let (initial_icon, initial_tooltip) = if let Some(active_id) = &config.active_profile_id {
         if let Some(p) = config.profiles.iter().find(|p| &p.id == active_id) {
-            let icon = generate_colored_icon(&p.color)
-                .unwrap_or_else(|| fallback_icon.clone());
+            let icon = generate_colored_icon(&p.color).unwrap_or_else(|| fallback_icon.clone());
             (icon, format!("GitSwitch — {}", p.label))
         } else {
             (fallback_icon.clone(), "GitSwitch".to_string())
@@ -194,15 +193,15 @@ fn on_menu_event(app: &AppHandle, id: &str) {
             if let Some(s) = id.strip_prefix("switch-") {
                 let profile_id = s.to_string();
                 match crate::commands::profiles::switch_profile_globally(app.clone(), profile_id) {
-                Ok(()) => {
-                    refresh_tray(app);
-                    // Tell the frontend to re-fetch profiles so UI + title bar update
-                    let _ = app.emit("profiles-changed", ());
-                }
-                Err(e) => {
-                    eprintln!("[tray] switch error: {e}");
-                    let _ = app.emit("tray-switch-failed", e);
-                }
+                    Ok(()) => {
+                        refresh_tray(app);
+                        // Tell the frontend to re-fetch profiles so UI + title bar update
+                        let _ = app.emit("profiles-changed", ());
+                    }
+                    Err(e) => {
+                        eprintln!("[tray] switch error: {e}");
+                        let _ = app.emit("tray-switch-failed", e);
+                    }
                 }
             }
         }

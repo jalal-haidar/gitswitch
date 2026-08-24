@@ -6,16 +6,20 @@ pub enum BackendErrorKind {
     GitNotFound,
     PermissionDenied,
     GitFailed,
+    GitTransactionFailed,
     IoError,
     SecureStorageError,
 }
 
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct BackendError {
     pub kind: BackendErrorKind,
     pub message: String,
     pub hint: Option<String>,
     pub details: Option<String>,
+    pub operation_failure: Option<String>,
+    pub rollback_failure: Option<String>,
 }
 
 impl BackendError {
@@ -25,6 +29,8 @@ impl BackendError {
             message: message.into(),
             hint: None,
             details: None,
+            operation_failure: None,
+            rollback_failure: None,
         }
     }
 
@@ -55,6 +61,30 @@ impl BackendError {
         BackendError::new(BackendErrorKind::GitFailed, "Git command failed").with_details(msg)
     }
 
+    pub fn git_transaction(
+        operation: &str,
+        operation_failure: impl Into<String>,
+        rollback_failure: Option<String>,
+    ) -> Self {
+        let operation_failure = summarize_failure(&operation_failure.into());
+        let rollback_failure = rollback_failure.map(|failure| summarize_failure(&failure));
+        let rollback_incomplete = rollback_failure.is_some();
+        BackendError {
+            kind: BackendErrorKind::GitTransactionFailed,
+            message: format!("Git configuration {operation} failed"),
+            hint: Some(if rollback_incomplete {
+                "Automatic rollback was incomplete. Review the rollback failure before retrying."
+                    .to_string()
+            } else {
+                "The original Git configuration was restored. Fix the reported problem and try again."
+                    .to_string()
+            }),
+            details: Some(operation_failure.clone()),
+            operation_failure: Some(operation_failure),
+            rollback_failure,
+        }
+    }
+
     pub fn io_error(msg: impl Into<String>) -> Self {
         BackendError::new(BackendErrorKind::IoError, msg)
     }
@@ -76,6 +106,17 @@ impl BackendError {
         .with_hint("The profile was not modified. Re-enter the missing SSH/GPG value or disable secure storage after access is restored.")
         .with_details(format!("Missing credential account '{account}'"))
     }
+}
+
+pub(crate) fn summarize_failure(error: &str) -> String {
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(error) else {
+        return error.to_string();
+    };
+    ["operationFailure", "details", "message"]
+        .into_iter()
+        .find_map(|field| value.get(field).and_then(serde_json::Value::as_str))
+        .map(ToOwned::to_owned)
+        .unwrap_or_else(|| error.to_string())
 }
 
 impl fmt::Display for BackendError {
@@ -173,5 +214,27 @@ mod tests {
         assert_eq!(e.message, "base message");
         assert_eq!(e.hint.as_deref(), Some("some hint"));
         assert_eq!(e.details.as_deref(), Some("some details"));
+    }
+
+    #[test]
+    fn git_transaction_reports_operation_and_rollback_separately() {
+        let error = BackendError::git_transaction(
+            "apply",
+            "commit.gpgsign write failed",
+            Some("user.name rollback failed".to_string()),
+        );
+        let value: serde_json::Value = serde_json::from_str(&error.to_string()).unwrap();
+        assert_eq!(value["operationFailure"], "commit.gpgsign write failed");
+        assert_eq!(value["rollbackFailure"], "user.name rollback failed");
+    }
+
+    #[test]
+    fn git_transaction_flattens_nested_backend_errors() {
+        let nested = BackendError::git_failed("fatal: could not lock config").to_string();
+        let error = BackendError::git_transaction("apply", nested, None);
+        assert_eq!(
+            error.operation_failure.as_deref(),
+            Some("fatal: could not lock config")
+        );
     }
 }

@@ -1,14 +1,15 @@
+use std::io::Write;
 use std::path::Path;
 use std::process::Command;
-use std::io::Write;
 
 use crate::git::{self, no_window, GitScope, ProcessGitExecutor};
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use tauri::AppHandle;
 use uuid::Uuid;
 
-use crate::config::store;
-use crate::models::{GitProfile, GitConfigSnapshot};
+use crate::config::{snapshots, store};
+use crate::errors::BackendError;
+use crate::models::GitProfile;
 
 // Server-side validation/sanitization helpers
 fn sanitize_string(s: &str, max_len: usize) -> String {
@@ -217,8 +218,14 @@ pub fn update_profile(app: AppHandle, profile: GitProfile) -> Result<GitProfile,
 #[tauri::command]
 pub fn delete_profile(app: AppHandle, id: String) -> Result<(), String> {
     store::update_config(&app, |config| {
-        if config.directory_rules.iter().any(|rule| rule.profile_id == id) {
-            return Err("Cannot delete profile while it is referenced by directory rules".to_string());
+        if config
+            .directory_rules
+            .iter()
+            .any(|rule| rule.profile_id == id)
+        {
+            return Err(
+                "Cannot delete profile while it is referenced by directory rules".to_string(),
+            );
         }
 
         let initial_len = config.profiles.len();
@@ -241,51 +248,111 @@ pub fn delete_profile(app: AppHandle, id: String) -> Result<(), String> {
 
 #[tauri::command]
 pub fn switch_profile_globally(app: AppHandle, id: String) -> Result<(), String> {
-    let config = store::load_config(&app).map_err(|e| e.to_string())?;
-    let profile = config.profiles.iter().find(|p| p.id == id)
-        .ok_or_else(|| format!("Profile not found: {id}"))?;
-        
-    git::apply_profile(&ProcessGitExecutor::default(), &GitScope::Global, profile)?;
-
-    store::update_config(&app, |config| {
-        if !config.profiles.iter().any(|profile| profile.id == id) {
-            return Err(format!("Profile not found: {id}"));
-        }
-        config.active_profile_id = Some(id.clone());
-        Ok(())
-    })?;
-    crate::tray::refresh_tray(&app);
-    Ok(())
-}
-
-pub fn switch_profile_for_repo(app: AppHandle, id: String, repo_path: &Path) -> Result<(), String> {
+    let _transaction = git::transaction_guard();
     let config = store::load_config(&app).map_err(|e| e.to_string())?;
     let profile = config
         .profiles
         .iter()
         .find(|p| p.id == id)
+        .cloned()
         .ok_or_else(|| format!("Profile not found: {id}"))?;
-
-    // Capture a transient snapshot of repo-local git config before mutating it —
-    // but only if there isn't already one (preserve the pre-switch baseline so
-    // repeated rapid auto-switches don't wipe out the original values).
-    let scope = GitScope::Local(repo_path.to_path_buf());
     let executor = ProcessGitExecutor::default();
-    if !store::has_transient_snapshot(&repo_path.to_string_lossy()) {
-        let snapshot = git::read_snapshot(&executor, &scope)?;
-        store::set_transient_snapshot(&repo_path.to_string_lossy(), snapshot);
-    }
-    git::apply_profile(&executor, &scope, profile)?;
+    let scope = GitScope::Global;
+    let desired = git::snapshot_for_profile(&profile)?;
+    git::preflight(&executor, &scope)?;
+    let baseline = git::read_snapshot(&executor, &scope)?;
+    let previous_snapshot = snapshots::swap_global(&app, Some(baseline.clone()))?;
 
-    store::update_config(&app, |config| {
+    if let Err(operation_error) =
+        git::apply_snapshot_transaction(&executor, &scope, "apply", &desired, &baseline)
+    {
+        return Err(compensate_snapshot_failure(
+            operation_error,
+            snapshots::swap_global(&app, previous_snapshot).err(),
+        ));
+    }
+
+    if let Err(operation_error) = store::update_config(&app, |config| {
         if !config.profiles.iter().any(|profile| profile.id == id) {
             return Err(format!("Profile not found: {id}"));
         }
         config.active_profile_id = Some(id.clone());
         Ok(())
-    })?;
+    }) {
+        let rollback = collect_rollback_failures([
+            git::rollback_to_snapshot(&executor, &scope, &baseline),
+            snapshots::swap_global(&app, previous_snapshot)
+                .err()
+                .map(|error| format!("snapshot rollback failed: {error}")),
+        ]);
+        return Err(BackendError::git_transaction("apply", operation_error, rollback).to_string());
+    }
     crate::tray::refresh_tray(&app);
     Ok(())
+}
+
+pub fn switch_profile_for_repo(app: AppHandle, id: String, repo_path: &Path) -> Result<(), String> {
+    let _transaction = git::transaction_guard();
+    let config = store::load_config(&app).map_err(|e| e.to_string())?;
+    let profile = config
+        .profiles
+        .iter()
+        .find(|p| p.id == id)
+        .cloned()
+        .ok_or_else(|| format!("Profile not found: {id}"))?;
+    let scope = GitScope::Local(repo_path.to_path_buf());
+    let executor = ProcessGitExecutor::default();
+    let desired = git::snapshot_for_profile(&profile)?;
+    git::preflight(&executor, &scope)?;
+    let baseline = git::read_snapshot(&executor, &scope)?;
+    let previous_snapshot = snapshots::swap_repository(&app, repo_path, Some(baseline.clone()))?;
+
+    if let Err(operation_error) =
+        git::apply_snapshot_transaction(&executor, &scope, "apply", &desired, &baseline)
+    {
+        return Err(compensate_snapshot_failure(
+            operation_error,
+            snapshots::swap_repository(&app, repo_path, previous_snapshot).err(),
+        ));
+    }
+
+    if let Err(operation_error) = store::update_config(&app, |config| {
+        if !config.profiles.iter().any(|profile| profile.id == id) {
+            return Err(format!("Profile not found: {id}"));
+        }
+        config.active_profile_id = Some(id.clone());
+        Ok(())
+    }) {
+        let rollback = collect_rollback_failures([
+            git::rollback_to_snapshot(&executor, &scope, &baseline),
+            snapshots::swap_repository(&app, repo_path, previous_snapshot)
+                .err()
+                .map(|error| format!("snapshot rollback failed: {error}")),
+        ]);
+        return Err(BackendError::git_transaction("apply", operation_error, rollback).to_string());
+    }
+    crate::tray::refresh_tray(&app);
+    Ok(())
+}
+
+fn collect_rollback_failures<const N: usize>(failures: [Option<String>; N]) -> Option<String> {
+    let failures: Vec<_> = failures.into_iter().flatten().collect();
+    (!failures.is_empty()).then(|| failures.join("; "))
+}
+
+fn compensate_snapshot_failure(
+    operation_error: String,
+    snapshot_rollback: Option<String>,
+) -> String {
+    match snapshot_rollback {
+        Some(snapshot_error) => BackendError::git_transaction(
+            "apply",
+            operation_error,
+            Some(format!("snapshot rollback failed: {snapshot_error}")),
+        )
+        .to_string(),
+        None => operation_error,
+    }
 }
 
 #[tauri::command]
@@ -302,7 +369,12 @@ pub fn set_active_profile(app: AppHandle, id: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn apply_identity(_app: AppHandle, name: String, email: String, gpg_key: Option<String>) -> Result<(), String> {
+pub fn apply_identity(
+    app: AppHandle,
+    name: String,
+    email: String,
+    gpg_key: Option<String>,
+) -> Result<(), String> {
     // Sanitize inputs
     let name = sanitize_string(&name, 200);
     let email = sanitize_string(&email, 254);
@@ -314,28 +386,38 @@ pub fn apply_identity(_app: AppHandle, name: String, email: String, gpg_key: Opt
         return Err("Identity email is missing or invalid".to_string());
     }
 
-    // Apply the given identity directly to global git config
-    execute_git_command(vec!["config", "--global", "user.name", &name])?;
-    execute_git_command(vec!["config", "--global", "user.email", &email])?;
-
-    if let Some(ref gpg) = gpg_key {
-        let gpg = sanitize_string(gpg, 128);
-        if !gpg.is_empty() {
-            execute_git_command(vec!["config", "--global", "user.signingkey", &gpg])?;
-            execute_git_command(vec!["config", "--global", "commit.gpgsign", "true"]).ok();
+    let _transaction = git::transaction_guard();
+    let executor = ProcessGitExecutor::default();
+    let scope = GitScope::Global;
+    git::preflight(&executor, &scope)?;
+    let baseline = git::read_snapshot(&executor, &scope)?;
+    let mut desired = baseline.clone();
+    desired.user_name = Some(name);
+    desired.user_email = Some(email);
+    desired.user_signingkey = gpg_key
+        .as_deref()
+        .map(|value| sanitize_string(value, 128))
+        .filter(|value| !value.is_empty());
+    desired.commit_gpgsign = Some(
+        if desired.user_signingkey.is_some() {
+            "true"
         } else {
-            execute_git_command(vec!["config", "--global", "--unset", "user.signingkey"]).ok();
-            execute_git_command(vec!["config", "--global", "commit.gpgsign", "false"]).ok();
+            "false"
         }
-    } else {
-        execute_git_command(vec!["config", "--global", "--unset", "user.signingkey"]).ok();
-        execute_git_command(vec!["config", "--global", "commit.gpgsign", "false"]).ok();
-    }
+        .to_string(),
+    );
 
+    let previous_snapshot = snapshots::swap_global(&app, Some(baseline.clone()))?;
+    if let Err(operation_error) =
+        git::apply_snapshot_transaction(&executor, &scope, "apply", &desired, &baseline)
+    {
+        return Err(compensate_snapshot_failure(
+            operation_error,
+            snapshots::swap_global(&app, previous_snapshot).err(),
+        ));
+    }
     Ok(())
 }
-
-// NOTE: GitConfigSnapshot is defined in `models.rs` and imported above.
 
 const EXPORT_VERSION: u32 = 1;
 
@@ -361,21 +443,19 @@ pub fn export_profiles(app: AppHandle, path: String) -> Result<(), String> {
         version: EXPORT_VERSION,
         profiles: config.profiles,
     };
-    let json = serde_json::to_string_pretty(&export)
-        .map_err(|e| format!("Serialization error: {e}"))?;
-    let mut file = std::fs::File::create(&path)
-        .map_err(|e| format!("Could not create file: {e}"))?;
+    let json =
+        serde_json::to_string_pretty(&export).map_err(|e| format!("Serialization error: {e}"))?;
+    let mut file =
+        std::fs::File::create(&path).map_err(|e| format!("Could not create file: {e}"))?;
     file.write_all(json.as_bytes())
         .map_err(|e| format!("Write error: {e}"))?;
-    file.sync_all()
-        .map_err(|e| format!("Sync error: {e}"))?;
+    file.sync_all().map_err(|e| format!("Sync error: {e}"))?;
     Ok(())
 }
 
 #[tauri::command]
 pub fn import_profiles(app: AppHandle, path: String) -> Result<ImportResult, String> {
-    let json = std::fs::read_to_string(&path)
-        .map_err(|e| format!("Could not read file: {e}"))?;
+    let json = std::fs::read_to_string(&path).map_err(|e| format!("Could not read file: {e}"))?;
     let export: ProfilesExport = serde_json::from_str(&json)
         .map_err(|_| "Invalid or unrecognised export file.".to_string())?;
 
@@ -426,25 +506,57 @@ pub struct ImportResult {
 }
 
 #[tauri::command]
-pub fn snapshot_global_git_config(_app: AppHandle) -> Result<GitConfigSnapshot, String> {
-    snapshot_global_git_config_inner()
-}
-
-pub fn snapshot_global_git_config_inner() -> Result<GitConfigSnapshot, String> {
-    git::read_snapshot(&ProcessGitExecutor::default(), &GitScope::Global)
+pub fn has_global_snapshot(app: AppHandle) -> Result<bool, String> {
+    Ok(snapshots::global(&app)?.is_some())
 }
 
 #[tauri::command]
-pub fn restore_global_git_config(_app: AppHandle, snapshot: GitConfigSnapshot) -> Result<(), String> {
-    restore_global_git_config_inner(snapshot)
+pub fn restore_global_snapshot(app: AppHandle) -> Result<(), String> {
+    let _transaction = git::transaction_guard();
+    let saved = snapshots::global(&app)?
+        .ok_or_else(|| "No durable global Git snapshot is available".to_string())?;
+    let executor = ProcessGitExecutor::default();
+    let scope = GitScope::Global;
+    git::preflight(&executor, &scope)?;
+    let current = git::read_snapshot(&executor, &scope)?;
+    git::apply_snapshot_transaction(&executor, &scope, "restore", &saved, &current)?;
+
+    let previous_active =
+        match store::update_config(&app, |config| Ok(config.active_profile_id.take())) {
+            Ok(previous) => previous,
+            Err(operation_error) => {
+                let rollback = git::rollback_to_snapshot(&executor, &scope, &current);
+                return Err(
+                    BackendError::git_transaction("restore", operation_error, rollback).to_string(),
+                );
+            }
+        };
+
+    if let Err(operation_error) = snapshots::swap_global(&app, None) {
+        let state_rollback = store::update_config(&app, |config| {
+            config.active_profile_id = previous_active.clone();
+            Ok(())
+        })
+        .err()
+        .map(|error| format!("active profile rollback failed: {error}"));
+        let rollback = collect_rollback_failures([
+            git::rollback_to_snapshot(&executor, &scope, &current),
+            state_rollback,
+        ]);
+        return Err(
+            BackendError::git_transaction("restore", operation_error, rollback).to_string(),
+        );
+    }
+
+    crate::tray::refresh_tray(&app);
+    Ok(())
 }
 
-pub fn restore_global_git_config_inner(snapshot: GitConfigSnapshot) -> Result<(), String> {
-    git::restore_snapshot(
-        &ProcessGitExecutor::default(),
-        &GitScope::Global,
-        &snapshot,
-    )
+#[tauri::command]
+pub fn discard_global_snapshot(app: AppHandle) -> Result<(), String> {
+    let _transaction = git::transaction_guard();
+    snapshots::swap_global(&app, None)?;
+    Ok(())
 }
 
 /// Walk up from `path` until we find a directory that contains `.git`.
@@ -488,15 +600,15 @@ pub struct RepoLocalConfig {
 /// Tauri command: read the local git config of a repo and return the current values.
 /// Used by the frontend to prove a profile switch actually landed in `.git/config`.
 #[tauri::command]
-pub fn get_repo_local_config(_app: AppHandle, repo_path: String) -> Result<RepoLocalConfig, String> {
+pub fn get_repo_local_config(
+    _app: AppHandle,
+    repo_path: String,
+) -> Result<RepoLocalConfig, String> {
     let path = Path::new(&repo_path);
-    let git_root = find_git_root(path)
-        .ok_or_else(|| format!("Not a git repository: {}", repo_path))?;
+    let git_root =
+        find_git_root(path).ok_or_else(|| format!("Not a git repository: {}", repo_path))?;
 
-    let snapshot = git::read_snapshot(
-        &ProcessGitExecutor::default(),
-        &GitScope::Local(git_root),
-    )?;
+    let snapshot = git::read_snapshot(&ProcessGitExecutor::default(), &GitScope::Local(git_root))?;
     Ok(RepoLocalConfig {
         user_name: snapshot.user_name,
         user_email: snapshot.user_email,
@@ -514,8 +626,12 @@ pub fn apply_profile_to_repo(app: AppHandle, id: String, repo_path: String) -> R
     if !path.exists() {
         return Err(format!("Path does not exist: {}", repo_path));
     }
-    let git_root = find_git_root(path)
-        .ok_or_else(|| format!("Not a git repository (or any parent directory): {}", repo_path))?;
+    let git_root = find_git_root(path).ok_or_else(|| {
+        format!(
+            "Not a git repository (or any parent directory): {}",
+            repo_path
+        )
+    })?;
     switch_profile_for_repo(app, id, &git_root)
 }
 
@@ -525,33 +641,60 @@ pub fn restore_repo_snapshot(app: AppHandle, repo_path: String) -> Result<(), St
     if !path.exists() {
         return Err(format!("Path does not exist: {}", repo_path));
     }
-    let git_root = find_git_root(path)
-        .ok_or_else(|| format!("Not a git repository (or any parent directory): {}", repo_path))?;
+    let git_root = find_git_root(path).ok_or_else(|| {
+        format!(
+            "Not a git repository (or any parent directory): {}",
+            repo_path
+        )
+    })?;
 
-    // Take the transient snapshot (removes it from the store)
-    let snap_opt = crate::config::store::take_transient_snapshot(&git_root.to_string_lossy());
-    let snapshot = snap_opt.ok_or_else(|| "No transient snapshot found for this repository".to_string())?;
+    let _transaction = git::transaction_guard();
+    let snapshot = snapshots::repository(&app, &git_root)?
+        .ok_or_else(|| "No durable snapshot found for this repository".to_string())?;
+    let executor = ProcessGitExecutor::default();
+    let scope = GitScope::Local(git_root.clone());
+    git::preflight(&executor, &scope)?;
+    let current = git::read_snapshot(&executor, &scope)?;
+    git::apply_snapshot_transaction(&executor, &scope, "restore", &snapshot, &current)?;
 
-    git::restore_snapshot(
-        &ProcessGitExecutor::default(),
-        &GitScope::Local(git_root),
-        &snapshot,
-    )?;
+    if let Err(operation_error) = snapshots::swap_repository(&app, &git_root, None) {
+        let rollback = git::rollback_to_snapshot(&executor, &scope, &current);
+        return Err(
+            BackendError::git_transaction("restore", operation_error, rollback).to_string(),
+        );
+    }
 
     crate::tray::refresh_tray(&app);
     Ok(())
 }
 
 #[tauri::command]
-pub fn has_repo_snapshot(_app: AppHandle, repo_path: String) -> Result<bool, String> {
+pub fn has_repo_snapshot(app: AppHandle, repo_path: String) -> Result<bool, String> {
     let path = Path::new(&repo_path);
     if !path.exists() {
         return Err(format!("Path does not exist: {}", repo_path));
     }
-    let git_root = find_git_root(path)
-        .ok_or_else(|| format!("Not a git repository (or any parent directory): {}", repo_path))?;
+    let git_root = find_git_root(path).ok_or_else(|| {
+        format!(
+            "Not a git repository (or any parent directory): {}",
+            repo_path
+        )
+    })?;
 
-    Ok(crate::config::store::has_transient_snapshot(&git_root.to_string_lossy()))
+    Ok(snapshots::repository(&app, &git_root)?.is_some())
+}
+
+#[tauri::command]
+pub fn discard_repo_snapshot(app: AppHandle, repo_path: String) -> Result<(), String> {
+    let path = Path::new(&repo_path);
+    if !path.exists() {
+        return Err(format!("Path does not exist: {repo_path}"));
+    }
+    let git_root = find_git_root(path)
+        .ok_or_else(|| format!("Not a git repository (or any parent directory): {repo_path}"))?;
+    let _transaction = git::transaction_guard();
+    snapshots::swap_repository(&app, &git_root, None)?;
+    Ok(())
 }
 
 #[derive(Serialize)]
@@ -562,14 +705,19 @@ pub struct SshTestResult {
 }
 
 fn extract_github_username(output: &str) -> Option<String> {
-    output.split("Hi ").nth(1)
+    output
+        .split("Hi ")
+        .nth(1)
         .and_then(|s| s.split('!').next())
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
 }
 
 #[tauri::command]
-pub fn test_ssh_connection(key_path: String, host: Option<String>) -> Result<SshTestResult, String> {
+pub fn test_ssh_connection(
+    key_path: String,
+    host: Option<String>,
+) -> Result<SshTestResult, String> {
     if key_path.trim().is_empty() {
         return Err("SSH key path is required".to_string());
     }
@@ -626,21 +774,28 @@ pub fn test_ssh_connection(key_path: String, host: Option<String>) -> Result<Ssh
     };
 
     let mut ssh_cmd = Command::new("ssh");
-    ssh_cmd.args(["-T", "-i", &key_path_str,
-               "-o", "IdentitiesOnly=yes",
-               "-o", "StrictHostKeyChecking=no",
-               "-o", "BatchMode=yes",
-               "-o", "ConnectTimeout=10",
-               &ssh_host]);
+    ssh_cmd.args([
+        "-T",
+        "-i",
+        &key_path_str,
+        "-o",
+        "IdentitiesOnly=yes",
+        "-o",
+        "StrictHostKeyChecking=no",
+        "-o",
+        "BatchMode=yes",
+        "-o",
+        "ConnectTimeout=10",
+        &ssh_host,
+    ]);
     no_window(&mut ssh_cmd);
-    let output = ssh_cmd.output()
-        .map_err(|e| {
-            if e.kind() == std::io::ErrorKind::NotFound {
-                "ssh executable not found — install OpenSSH or Git for Windows".to_string()
-            } else {
-                format!("Failed to run ssh: {}", e)
-            }
-        })?;
+    let output = ssh_cmd.output().map_err(|e| {
+        if e.kind() == std::io::ErrorKind::NotFound {
+            "ssh executable not found — install OpenSSH or Git for Windows".to_string()
+        } else {
+            format!("Failed to run ssh: {}", e)
+        }
+    })?;
 
     // GitHub/GitLab respond on stderr; combine both streams
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
@@ -667,7 +822,9 @@ pub fn test_ssh_connection(key_path: String, host: Option<String>) -> Result<Ssh
     }
 
     if combined.contains("Welcome to GitLab") {
-        let username = combined.split('@').nth(1)
+        let username = combined
+            .split('@')
+            .nth(1)
             .and_then(|s| s.split('!').next())
             .map(|s| s.trim().to_string());
         return Ok(SshTestResult {
@@ -693,11 +850,17 @@ pub fn test_ssh_connection(key_path: String, host: Option<String>) -> Result<Ssh
         });
     }
 
-    if combined_lower.contains("connection refused") || combined_lower.contains("no route to host") || combined_lower.contains("timed out") {
+    if combined_lower.contains("connection refused")
+        || combined_lower.contains("no route to host")
+        || combined_lower.contains("timed out")
+    {
         return Ok(SshTestResult {
             success: false,
             username: None,
-            message: format!("Could not reach {} — check your network connection", service),
+            message: format!(
+                "Could not reach {} — check your network connection",
+                service
+            ),
         });
     }
 
@@ -712,31 +875,9 @@ pub fn test_ssh_connection(key_path: String, host: Option<String>) -> Result<Ssh
     })
 }
 
-fn execute_git_command(args: Vec<&str>) -> Result<(), String> {
-    execute_git_command_in_dir(args, None)
-}
-
-fn execute_git_command_in_dir(args: Vec<&str>, cwd: Option<&Path>) -> Result<(), String> {
-    git::execute_checked(
-        &ProcessGitExecutor::default(),
-        &git::args(args),
-        cwd,
-    )
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn execute_git_command_returns_git_failed_on_bad_args() {
-        // calling git with an invalid rev-parse flag should produce a failing exit status
-        let res = execute_git_command(vec!["rev-parse", "--not-a-real-arg"]);
-            if let Err(err) = res {
-                // the error string should include serialized BackendError with kind GitFailed
-                assert!(err.contains("GitFailed") || err.to_lowercase().contains("git command failed"), "unexpected error payload: {}", err);
-            }
-    }
 
     // ── sanitize_string ──────────────────────────────────────────
     #[test]
@@ -953,7 +1094,10 @@ mod tests {
     #[test]
     fn extract_username_with_hyphens() {
         let output = "Hi my-user-name! You've successfully authenticated...";
-        assert_eq!(extract_github_username(output).as_deref(), Some("my-user-name"));
+        assert_eq!(
+            extract_github_username(output).as_deref(),
+            Some("my-user-name")
+        );
     }
 
     #[test]
@@ -979,7 +1123,11 @@ mod tests {
         let found = find_git_root(&sub);
         assert!(found.is_some(), "should find git root");
         let found = found.unwrap();
-        assert!(found.ends_with("project"), "root should be project dir, got: {}", found.display());
+        assert!(
+            found.ends_with("project"),
+            "root should be project dir, got: {}",
+            found.display()
+        );
 
         let _ = std::fs::remove_dir_all(&tmp);
     }

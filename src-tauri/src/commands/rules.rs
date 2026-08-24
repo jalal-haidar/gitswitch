@@ -38,15 +38,19 @@ pub fn set_start_with_system(app: AppHandle, enabled: bool) -> Result<bool, Stri
         config.settings.start_with_system = enabled;
         Ok(())
     })?;
-    
+
     // Enable/disable OS autostart
     let manager = app.autolaunch();
     if enabled {
-        manager.enable().map_err(|e| format!("Failed to enable autostart: {}", e))?;
+        manager
+            .enable()
+            .map_err(|e| format!("Failed to enable autostart: {}", e))?;
     } else {
-        manager.disable().map_err(|e| format!("Failed to disable autostart: {}", e))?;
+        manager
+            .disable()
+            .map_err(|e| format!("Failed to disable autostart: {}", e))?;
     }
-    
+
     Ok(enabled)
 }
 
@@ -66,7 +70,11 @@ pub fn get_last_auto_switch_event() -> Result<Option<auto_switch::AutoSwitchEven
 #[tauri::command]
 pub fn get_directory_rules(app: AppHandle) -> Result<Vec<DirectoryRule>, String> {
     let config = store::load_config(&app).map_err(|error| error.to_string())?;
-    if config.directory_rules.iter().all(|rule| !rule.id.is_empty()) {
+    if config
+        .directory_rules
+        .iter()
+        .all(|rule| !rule.id.is_empty())
+    {
         return Ok(config.directory_rules);
     }
 
@@ -81,7 +89,10 @@ pub fn get_directory_rules(app: AppHandle) -> Result<Vec<DirectoryRule>, String>
 }
 
 #[tauri::command]
-pub fn add_directory_rule(app: AppHandle, mut rule: DirectoryRule) -> Result<DirectoryRule, String> {
+pub fn add_directory_rule(
+    app: AppHandle,
+    mut rule: DirectoryRule,
+) -> Result<DirectoryRule, String> {
     let path = rule.path.trim().to_string();
     if path.is_empty() {
         return Err("Rule path is required".to_string());
@@ -104,10 +115,11 @@ pub fn add_directory_rule(app: AppHandle, mut rule: DirectoryRule) -> Result<Dir
             return Err("Selected profile does not exist".to_string());
         }
         if config.directory_rules.iter().any(|existing| {
-            existing.path.eq_ignore_ascii_case(&rule.path)
-                && existing.profile_id == rule.profile_id
+            existing.path.eq_ignore_ascii_case(&rule.path) && existing.profile_id == rule.profile_id
         }) {
-            return Err("A directory rule with the same path and profile already exists".to_string());
+            return Err(
+                "A directory rule with the same path and profile already exists".to_string(),
+            );
         }
         config.directory_rules.push(rule.clone());
         Ok(rule.clone())
@@ -141,7 +153,9 @@ pub fn update_directory_rule(app: AppHandle, rule: DirectoryRule) -> Result<Dire
                 && existing.path.eq_ignore_ascii_case(&path)
                 && existing.profile_id == rule.profile_id
         }) {
-            return Err("A directory rule with the same path and profile already exists".to_string());
+            return Err(
+                "A directory rule with the same path and profile already exists".to_string(),
+            );
         }
 
         let existing = config
@@ -183,7 +197,10 @@ pub fn get_theme(app: AppHandle) -> Result<String, String> {
 pub fn set_theme(app: AppHandle, theme: String) -> Result<String, String> {
     let valid = ["system", "dark", "light"];
     if !valid.contains(&theme.as_str()) {
-        return Err(format!("Invalid theme '{}'. Use: system, dark, light", theme));
+        return Err(format!(
+            "Invalid theme '{}'. Use: system, dark, light",
+            theme
+        ));
     }
     store::update_config(&app, |config| {
         config.settings.theme = theme.clone();

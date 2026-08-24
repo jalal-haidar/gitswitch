@@ -4,7 +4,8 @@ use std::time::Duration;
 
 use gitswitch_lib::native_test_support::{
     credential_account, decide_auto_switch, AppConfig, ConfigHarness, CredentialFailure,
-    DirectoryRule, GitConfigSnapshot, GitProfile, GitSandbox, TestAutoSwitchDecision,
+    DirectoryRule, GitConfigSnapshot, GitProfile, GitSandbox, SnapshotHarness,
+    TestAutoSwitchDecision,
 };
 
 fn profile(id: &str, ssh_key: Option<&Path>) -> GitProfile {
@@ -183,31 +184,66 @@ fn restore_removes_values_that_were_initially_unset() {
 }
 
 #[test]
-fn later_git_failure_characterizes_current_partial_global_write() {
-    let sandbox = GitSandbox::new().unwrap();
-    let key = sandbox.create_ssh_key("failure-key").unwrap();
-    let original = baseline();
-    seed_global(&sandbox, &original);
-    sandbox.fail_next_write("commit.gpgsign");
+fn every_global_write_failure_restores_the_exact_baseline() {
+    for field in [
+        "user.name",
+        "user.email",
+        "user.signingkey",
+        "commit.gpgsign",
+        "core.sshCommand",
+    ] {
+        let sandbox = GitSandbox::new().unwrap();
+        let key = sandbox.create_ssh_key(&format!("global-{field}")).unwrap();
+        let original = baseline();
+        seed_global(&sandbox, &original);
+        sandbox.fail_next_write(field);
 
-    let error = sandbox
-        .apply_global(&profile("failure", Some(&key)))
-        .unwrap_err();
-    assert!(error.contains("injected Git failure"));
-    assert_eq!(
-        sandbox.read_global().unwrap(),
-        GitConfigSnapshot {
-            user_name: Some("New Name".to_string()),
-            user_email: Some("new@example.com".to_string()),
-            user_signingkey: Some("NEW-GPG".to_string()),
-            commit_gpgsign: original.commit_gpgsign,
-            core_ssh_command: original.core_ssh_command,
-        }
-    );
+        let error = sandbox
+            .apply_global(&profile("failure", Some(&key)))
+            .unwrap_err();
+        let value: serde_json::Value = serde_json::from_str(&error).unwrap();
+        assert_eq!(value["kind"], "GitTransactionFailed");
+        assert!(value["operationFailure"]
+            .as_str()
+            .unwrap()
+            .contains("injected Git failure"));
+        assert!(value["rollbackFailure"].is_null());
+        assert_eq!(sandbox.read_global().unwrap(), original, "field: {field}");
+    }
 }
 
 #[test]
-fn missing_repo_ssh_key_characterizes_current_partial_write() {
+fn every_repo_write_failure_restores_the_exact_baseline() {
+    for field in [
+        "user.name",
+        "user.email",
+        "user.signingkey",
+        "commit.gpgsign",
+        "core.sshCommand",
+    ] {
+        let sandbox = GitSandbox::new().unwrap();
+        let repo = sandbox.init_repo(&format!("repo-{field}")).unwrap();
+        let key = sandbox
+            .create_ssh_key(&format!("repo-{field}-key"))
+            .unwrap();
+        let original = baseline();
+        seed_local(&sandbox, &repo, &original);
+        sandbox.fail_next_write(field);
+
+        let error = sandbox
+            .apply_local(&repo, &profile("failure", Some(&key)))
+            .unwrap_err();
+        assert!(error.contains("GitTransactionFailed"));
+        assert_eq!(
+            sandbox.read_local(&repo).unwrap(),
+            original,
+            "field: {field}"
+        );
+    }
+}
+
+#[test]
+fn missing_repo_ssh_key_fails_preflight_without_any_write() {
     let sandbox = GitSandbox::new().unwrap();
     let repo = sandbox.init_repo("missing-key-repo").unwrap();
     let original = baseline();
@@ -218,16 +254,94 @@ fn missing_repo_ssh_key_characterizes_current_partial_write() {
         .apply_local(&repo, &profile("missing", Some(&missing)))
         .unwrap_err();
     assert!(error.contains("SSH key file not found"));
+    assert_eq!(sandbox.read_local(&repo).unwrap(), original);
+}
+
+#[test]
+fn verification_mismatch_rolls_back_all_fields() {
+    let sandbox = GitSandbox::new().unwrap();
+    let key = sandbox.create_ssh_key("verification-key").unwrap();
+    let original = baseline();
+    seed_global(&sandbox, &original);
+    sandbox.skip_mutations(&[5]);
+
+    let error = sandbox
+        .apply_global(&profile("verification", Some(&key)))
+        .unwrap_err();
+    let value: serde_json::Value = serde_json::from_str(&error).unwrap();
+    assert!(value["operationFailure"]
+        .as_str()
+        .unwrap()
+        .contains("verification mismatch"));
+    assert!(value["rollbackFailure"].is_null());
+    assert_eq!(sandbox.read_global().unwrap(), original);
+}
+
+#[test]
+fn operation_and_rollback_failures_are_reported_separately() {
+    let sandbox = GitSandbox::new().unwrap();
+    let key = sandbox.create_ssh_key("double-failure-key").unwrap();
+    let original = baseline();
+    seed_global(&sandbox, &original);
+    // Fail the fifth apply mutation, then the first rollback mutation.
+    sandbox.fail_mutations(&[5, 6]);
+
+    let error = sandbox
+        .apply_global(&profile("double-failure", Some(&key)))
+        .unwrap_err();
+    let value: serde_json::Value = serde_json::from_str(&error).unwrap();
+    assert!(value["operationFailure"]
+        .as_str()
+        .unwrap()
+        .contains("mutation 5"));
+    assert!(value["rollbackFailure"]
+        .as_str()
+        .unwrap()
+        .contains("mutation 6"));
+}
+
+#[test]
+fn empty_values_are_distinct_from_unset_values() {
+    let sandbox = GitSandbox::new().unwrap();
+    sandbox.set_global("user.name", "").unwrap();
+
+    let snapshot = sandbox.read_global().unwrap();
+    assert_eq!(snapshot.user_name, Some(String::new()));
+    assert_eq!(snapshot.user_email, None);
+}
+
+#[test]
+fn durable_snapshots_survive_fresh_reads_replace_latest_and_remove_explicitly() {
+    let harness = SnapshotHarness::new().unwrap();
+    let repo = harness.root().join("repo");
+    fs::create_dir_all(&repo).unwrap();
+    let first = baseline();
+    let mut latest = baseline();
+    latest.user_name = Some("Latest baseline".to_string());
+
+    assert_eq!(harness.swap_global(Some(first.clone())).unwrap(), None);
+    assert!(harness.path().is_file());
+    assert_eq!(harness.global().unwrap(), Some(first.clone()));
     assert_eq!(
-        sandbox.read_local(&repo).unwrap(),
-        GitConfigSnapshot {
-            user_name: Some("New Name".to_string()),
-            user_email: Some("new@example.com".to_string()),
-            user_signingkey: Some("NEW-GPG".to_string()),
-            commit_gpgsign: Some("true".to_string()),
-            core_ssh_command: original.core_ssh_command,
-        }
+        harness.swap_global(Some(latest.clone())).unwrap(),
+        Some(first)
     );
+    assert_eq!(harness.global().unwrap(), Some(latest.clone()));
+
+    assert_eq!(
+        harness
+            .swap_repository(&repo, Some(latest.clone()))
+            .unwrap(),
+        None
+    );
+    assert_eq!(harness.repository(&repo).unwrap(), Some(latest.clone()));
+    assert_eq!(
+        harness.swap_repository(&repo, None).unwrap(),
+        Some(latest.clone())
+    );
+    assert_eq!(harness.repository(&repo).unwrap(), None);
+    assert_eq!(harness.swap_global(None).unwrap(), Some(latest));
+    assert_eq!(harness.global().unwrap(), None);
 }
 
 #[test]

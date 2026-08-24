@@ -1,17 +1,23 @@
 use std::collections::BTreeMap;
 use std::ffi::{OsStr, OsString};
+use std::fs::{self, OpenOptions};
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::{Mutex, MutexGuard};
 
-use crate::errors::BackendError;
+use once_cell::sync::Lazy;
+
+use crate::errors::{summarize_failure, BackendError};
 use crate::models::{GitConfigSnapshot, GitProfile};
+
+static GIT_TRANSACTION_LOCK: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
 
 /// Suppress the CMD console window flicker on Windows when spawning child processes.
 /// No-op on non-Windows platforms.
 #[cfg(windows)]
 pub fn no_window(cmd: &mut Command) {
     use std::os::windows::process::CommandExt;
-    cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+    cmd.creation_flags(0x0800_0000);
 }
 
 #[cfg(not(windows))]
@@ -20,6 +26,7 @@ pub fn no_window(_cmd: &mut Command) {}
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct GitCommandOutput {
     pub success: bool,
+    pub exit_code: Option<i32>,
     pub stdout: String,
     pub stderr: String,
 }
@@ -88,7 +95,10 @@ impl GitExecutor for ProcessGitExecutor {
 
         Ok(GitCommandOutput {
             success: output.status.success(),
-            stdout: String::from_utf8_lossy(&output.stdout).trim().to_string(),
+            exit_code: output.status.code(),
+            stdout: String::from_utf8_lossy(&output.stdout)
+                .trim_end_matches(['\r', '\n'])
+                .to_string(),
             stderr: String::from_utf8_lossy(&output.stderr).to_string(),
         })
     }
@@ -116,6 +126,22 @@ impl GitScope {
     }
 }
 
+pub(crate) fn transaction_guard() -> MutexGuard<'static, ()> {
+    GIT_TRANSACTION_LOCK.lock().unwrap_or_else(|poisoned| {
+        eprintln!("[git] transaction mutex poisoned, recovering");
+        poisoned.into_inner()
+    })
+}
+
+fn output_error(output: GitCommandOutput) -> String {
+    let stderr_lower = output.stderr.to_lowercase();
+    if stderr_lower.contains("permission denied") || stderr_lower.contains("cannot open") {
+        BackendError::permission_denied(output.stderr).to_string()
+    } else {
+        BackendError::git_failed(output.stderr).to_string()
+    }
+}
+
 pub(crate) fn execute_checked(
     executor: &dyn GitExecutor,
     args: &[String],
@@ -123,14 +149,9 @@ pub(crate) fn execute_checked(
 ) -> Result<(), String> {
     let output = executor.run(args, cwd)?;
     if output.success {
-        return Ok(());
-    }
-
-    let stderr_lower = output.stderr.to_lowercase();
-    if stderr_lower.contains("permission denied") || stderr_lower.contains("cannot open") {
-        Err(BackendError::permission_denied(output.stderr).to_string())
+        Ok(())
     } else {
-        Err(BackendError::git_failed(output.stderr).to_string())
+        Err(output_error(output))
     }
 }
 
@@ -139,17 +160,21 @@ pub(crate) fn read_value(
     scope: &GitScope,
     key: &str,
 ) -> Result<Option<String>, String> {
-    let args = vec![
-        "config".to_string(),
-        scope.flag().to_string(),
-        "--get".to_string(),
-        key.to_string(),
-    ];
-    let output = executor.run(&args, scope.cwd())?;
-    if !output.success || output.stdout.is_empty() {
+    let output = executor.run(
+        &[
+            "config".to_string(),
+            scope.flag().to_string(),
+            "--get".to_string(),
+            key.to_string(),
+        ],
+        scope.cwd(),
+    )?;
+    if output.success {
+        Ok(Some(output.stdout))
+    } else if output.exit_code == Some(1) {
         Ok(None)
     } else {
-        Ok(Some(output.stdout))
+        Err(output_error(output))
     }
 }
 
@@ -197,50 +222,261 @@ pub(crate) fn read_snapshot(
     })
 }
 
+pub(crate) fn snapshot_for_profile(profile: &GitProfile) -> Result<GitConfigSnapshot, String> {
+    let ssh_key_path = profile
+        .ssh_key_path
+        .as_deref()
+        .filter(|value| !value.is_empty());
+    if let Some(path) = ssh_key_path {
+        let path = Path::new(path);
+        if !path.is_file() {
+            return Err(format!(
+                "SSH key file not found for profile '{}': {}. Edit the profile to fix the path.",
+                profile.label,
+                path.display()
+            ));
+        }
+    }
+
+    let signing_key = profile
+        .gpg_key_id
+        .as_deref()
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned);
+    Ok(GitConfigSnapshot {
+        user_name: Some(profile.name.clone()),
+        user_email: Some(profile.email.clone()),
+        user_signingkey: signing_key.clone(),
+        commit_gpgsign: Some(
+            if signing_key.is_some() {
+                "true"
+            } else {
+                "false"
+            }
+            .to_string(),
+        ),
+        core_ssh_command: ssh_key_path.map(|path| {
+            format!(
+                "ssh -i \"{}\" -o IdentitiesOnly=yes",
+                path.replace('\\', "/")
+            )
+        }),
+    })
+}
+
+pub(crate) fn preflight(executor: &dyn GitExecutor, scope: &GitScope) -> Result<(), String> {
+    let config_path = match scope {
+        GitScope::Local(repo) => {
+            let repository =
+                executor.run(&args(["rev-parse", "--is-inside-work-tree"]), Some(repo))?;
+            if !repository.success || repository.stdout != "true" {
+                return Err(format!("Not a Git repository: {}", repo.display()));
+            }
+            let output = executor.run(&args(["rev-parse", "--git-path", "config"]), Some(repo))?;
+            if !output.success || output.stdout.is_empty() {
+                return Err(output_error(output));
+            }
+            let path = PathBuf::from(output.stdout);
+            if path.is_absolute() {
+                path
+            } else {
+                repo.join(path)
+            }
+        }
+        GitScope::Global => {
+            let output = executor.run(&args(["var", "-l"]), None)?;
+            if !output.success {
+                return Err(output_error(output));
+            }
+            output
+                .stdout
+                .lines()
+                .filter_map(|line| line.strip_prefix("GIT_CONFIG_GLOBAL="))
+                .map(PathBuf::from)
+                .next_back()
+                .ok_or_else(|| {
+                    "Git did not report a writable global configuration path".to_string()
+                })?
+        }
+    };
+    preflight_config_path(&config_path)
+}
+
+fn preflight_config_path(config_path: &Path) -> Result<(), String> {
+    let parent = config_path.parent().ok_or_else(|| {
+        format!(
+            "Cannot determine parent directory for Git config {}",
+            config_path.display()
+        )
+    })?;
+    if !parent.is_dir() {
+        return Err(format!(
+            "Git config directory does not exist: {}",
+            parent.display()
+        ));
+    }
+    if config_path.exists() {
+        OpenOptions::new()
+            .write(true)
+            .open(config_path)
+            .map_err(|error| {
+                format!(
+                    "Git config is not writable at {}: {error}",
+                    config_path.display()
+                )
+            })?;
+    }
+
+    let mut lock_name = config_path.as_os_str().to_os_string();
+    lock_name.push(".lock");
+    let lock_path = PathBuf::from(lock_name);
+    let probe = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&lock_path)
+        .map_err(|error| {
+            format!(
+                "Git config cannot acquire a write lock at {}: {error}",
+                lock_path.display()
+            )
+        })?;
+    drop(probe);
+    fs::remove_file(&lock_path).map_err(|error| {
+        format!(
+            "Failed to remove Git config write probe at {}: {error}",
+            lock_path.display()
+        )
+    })
+}
+
+fn write_field(
+    executor: &dyn GitExecutor,
+    scope: &GitScope,
+    key: &str,
+    current: &Option<String>,
+    desired: &Option<String>,
+) -> Result<(), String> {
+    if current == desired {
+        return Ok(());
+    }
+    match desired {
+        Some(value) => set_value(executor, scope, key, value),
+        None => unset_value(executor, scope, key),
+    }
+}
+
+fn write_snapshot(
+    executor: &dyn GitExecutor,
+    scope: &GitScope,
+    desired: &GitConfigSnapshot,
+) -> Result<(), String> {
+    let current = read_snapshot(executor, scope)?;
+    write_field(
+        executor,
+        scope,
+        "user.name",
+        &current.user_name,
+        &desired.user_name,
+    )?;
+    write_field(
+        executor,
+        scope,
+        "user.email",
+        &current.user_email,
+        &desired.user_email,
+    )?;
+    write_field(
+        executor,
+        scope,
+        "user.signingkey",
+        &current.user_signingkey,
+        &desired.user_signingkey,
+    )?;
+    write_field(
+        executor,
+        scope,
+        "commit.gpgsign",
+        &current.commit_gpgsign,
+        &desired.commit_gpgsign,
+    )?;
+    write_field(
+        executor,
+        scope,
+        "core.sshCommand",
+        &current.core_ssh_command,
+        &desired.core_ssh_command,
+    )?;
+
+    let actual = read_snapshot(executor, scope)?;
+    if actual == *desired {
+        Ok(())
+    } else {
+        Err(format!(
+            "Git verification mismatch. Expected {desired:?}, found {actual:?}"
+        ))
+    }
+}
+
+fn rollback_snapshot(
+    executor: &dyn GitExecutor,
+    scope: &GitScope,
+    baseline: &GitConfigSnapshot,
+) -> Option<String> {
+    let fields = [
+        ("user.name", &baseline.user_name),
+        ("user.email", &baseline.user_email),
+        ("user.signingkey", &baseline.user_signingkey),
+        ("commit.gpgsign", &baseline.commit_gpgsign),
+        ("core.sshCommand", &baseline.core_ssh_command),
+    ];
+    let mut failures = Vec::new();
+    for (key, desired) in fields {
+        match read_value(executor, scope, key) {
+            Ok(current) => {
+                if let Err(error) = write_field(executor, scope, key, &current, desired) {
+                    failures.push(format!("{key}: {}", summarize_failure(&error)));
+                }
+            }
+            Err(error) => failures.push(format!("{key} read: {}", summarize_failure(&error))),
+        }
+    }
+    match read_snapshot(executor, scope) {
+        Ok(actual) if actual == *baseline => {}
+        Ok(actual) => failures.push(format!(
+            "rollback verification mismatch. Expected {baseline:?}, found {actual:?}"
+        )),
+        Err(error) => failures.push(format!("rollback verification failed: {error}")),
+    }
+    (!failures.is_empty()).then(|| failures.join("; "))
+}
+
+pub(crate) fn apply_snapshot_transaction(
+    executor: &dyn GitExecutor,
+    scope: &GitScope,
+    operation: &str,
+    desired: &GitConfigSnapshot,
+    baseline: &GitConfigSnapshot,
+) -> Result<(), String> {
+    if let Err(operation_failure) = write_snapshot(executor, scope, desired) {
+        let rollback_failure = rollback_snapshot(executor, scope, baseline);
+        return Err(
+            BackendError::git_transaction(operation, operation_failure, rollback_failure)
+                .to_string(),
+        );
+    }
+    Ok(())
+}
+
 pub(crate) fn apply_profile(
     executor: &dyn GitExecutor,
     scope: &GitScope,
     profile: &GitProfile,
 ) -> Result<(), String> {
-    set_value(executor, scope, "user.name", &profile.name)?;
-    set_value(executor, scope, "user.email", &profile.email)?;
-
-    if let Some(gpg_key) = profile
-        .gpg_key_id
-        .as_deref()
-        .filter(|value| !value.is_empty())
-    {
-        set_value(executor, scope, "user.signingkey", gpg_key)?;
-        set_value(executor, scope, "commit.gpgsign", "true")?;
-    } else {
-        let _ = unset_value(executor, scope, "user.signingkey");
-        let _ = set_value(executor, scope, "commit.gpgsign", "false");
-    }
-
-    match profile
-        .ssh_key_path
-        .as_deref()
-        .filter(|value| !value.is_empty())
-    {
-        Some(ssh_path) => {
-            // Preserve the current workflow: repo-local switches validate the
-            // SSH key after earlier identity writes; global switches do not.
-            if matches!(scope, GitScope::Local(_)) && !Path::new(ssh_path).exists() {
-                return Err(format!(
-                    "SSH key file not found for profile '{}': {}. Edit the profile to fix the path.",
-                    profile.label, ssh_path
-                ));
-            }
-            let normalized = ssh_path.replace('\\', "/");
-            let command = format!("ssh -i \"{normalized}\" -o IdentitiesOnly=yes");
-            set_value(executor, scope, "core.sshCommand", &command)?;
-        }
-        None => {
-            let _ = unset_value(executor, scope, "core.sshCommand");
-        }
-    }
-
-    Ok(())
+    let _guard = transaction_guard();
+    let desired = snapshot_for_profile(profile)?;
+    preflight(executor, scope)?;
+    let baseline = read_snapshot(executor, scope)?;
+    apply_snapshot_transaction(executor, scope, "apply", &desired, &baseline)
 }
 
 pub(crate) fn restore_snapshot(
@@ -248,53 +484,18 @@ pub(crate) fn restore_snapshot(
     scope: &GitScope,
     snapshot: &GitConfigSnapshot,
 ) -> Result<(), String> {
-    match snapshot.user_name.as_deref() {
-        Some(value) => set_value(executor, scope, "user.name", value)?,
-        None => {
-            let _ = unset_value(executor, scope, "user.name");
-        }
-    }
-    match snapshot.user_email.as_deref() {
-        Some(value) => set_value(executor, scope, "user.email", value)?,
-        None => {
-            let _ = unset_value(executor, scope, "user.email");
-        }
-    }
-    match snapshot
-        .user_signingkey
-        .as_deref()
-        .filter(|value| !value.is_empty())
-    {
-        Some(value) => {
-            set_value(executor, scope, "user.signingkey", value)?;
-            if matches!(scope, GitScope::Local(_)) {
-                set_value(executor, scope, "commit.gpgsign", "true")?;
-            } else {
-                let _ = set_value(executor, scope, "commit.gpgsign", "true");
-            }
-        }
-        None => {
-            let _ = unset_value(executor, scope, "user.signingkey");
-            let _ = set_value(executor, scope, "commit.gpgsign", "false");
-        }
-    }
-    match snapshot.commit_gpgsign.as_deref() {
-        Some(value) => set_value(executor, scope, "commit.gpgsign", value)?,
-        None => {
-            let _ = unset_value(executor, scope, "commit.gpgsign");
-        }
-    }
-    match snapshot
-        .core_ssh_command
-        .as_deref()
-        .filter(|value| !value.is_empty())
-    {
-        Some(value) => set_value(executor, scope, "core.sshCommand", value)?,
-        None => {
-            let _ = unset_value(executor, scope, "core.sshCommand");
-        }
-    }
-    Ok(())
+    let _guard = transaction_guard();
+    preflight(executor, scope)?;
+    let current = read_snapshot(executor, scope)?;
+    apply_snapshot_transaction(executor, scope, "restore", snapshot, &current)
+}
+
+pub(crate) fn rollback_to_snapshot(
+    executor: &dyn GitExecutor,
+    scope: &GitScope,
+    snapshot: &GitConfigSnapshot,
+) -> Option<String> {
+    rollback_snapshot(executor, scope, snapshot)
 }
 
 pub(crate) fn args<I, S>(items: I) -> Vec<String>

@@ -1,9 +1,9 @@
+mod auto_switch;
 mod commands;
 mod config;
-mod models;
 mod errors;
-mod auto_switch;
 mod git;
+mod models;
 mod tray;
 
 #[cfg(feature = "native-test-support")]
@@ -34,8 +34,9 @@ pub fn run() {
             commands::profiles::switch_profile_globally,
             commands::profiles::export_profiles,
             commands::profiles::import_profiles,
-            commands::profiles::snapshot_global_git_config,
-            commands::profiles::restore_global_git_config,
+            commands::profiles::has_global_snapshot,
+            commands::profiles::restore_global_snapshot,
+            commands::profiles::discard_global_snapshot,
             commands::profiles::apply_identity,
             commands::profiles::set_active_profile,
             commands::detect::detect_identities,
@@ -54,6 +55,7 @@ pub fn run() {
             commands::profiles::apply_profile_to_repo,
             commands::profiles::restore_repo_snapshot,
             commands::profiles::has_repo_snapshot,
+            commands::profiles::discard_repo_snapshot,
             commands::profiles::get_repo_local_config,
             commands::rules::get_theme,
             commands::rules::set_theme,

@@ -47,4 +47,22 @@ describe("friendlyErrorMessage", () => {
     const err = `Error: ${JSON.stringify({ kind: "IoError", message: "disk full" })}`;
     expect(friendlyErrorMessage(err)).toBe("disk full");
   });
+
+  it("surfaces the operation failure and a separate rollback failure", () => {
+    const err = JSON.stringify({
+      kind: "GitTransactionFailed",
+      message: "Git configuration apply failed",
+      operationFailure: "commit.gpgsign write failed",
+      rollbackFailure: "user.name rollback failed",
+    });
+
+    expect(normalizeBackendError(err)).toMatchObject({
+      message: "commit.gpgsign write failed",
+      operationFailure: "commit.gpgsign write failed",
+      rollbackFailure: "user.name rollback failed",
+    });
+    expect(friendlyErrorMessage(err)).toBe(
+      "commit.gpgsign write failed. Rollback also failed: user.name rollback failed",
+    );
+  });
 });

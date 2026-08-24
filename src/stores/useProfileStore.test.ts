@@ -49,6 +49,33 @@ describe("useProfileStore invoke payloads", () => {
     });
   });
 
+  it("uses durable global snapshot commands and refreshes state after restore", async () => {
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "get_profiles") return [];
+      if (command === "get_active_profile_id") return null;
+      if (command === "has_global_snapshot") return false;
+      return undefined;
+    });
+
+    await useProfileStore.getState().restoreGlobalSnapshot();
+
+    expect(invokeMock).toHaveBeenCalledWith("restore_global_snapshot");
+    expect(invokeMock).toHaveBeenCalledWith("has_global_snapshot");
+    expect(useProfileStore.getState().hasGlobalSnapshot).toBe(false);
+  });
+
+  it("invokes explicit global and repository snapshot discard commands", async () => {
+    invokeMock.mockResolvedValue(undefined);
+
+    await useProfileStore.getState().discardGlobalSnapshot();
+    await useProfileStore.getState().discardRepoSnapshot("C:\\repo");
+
+    expect(invokeMock).toHaveBeenCalledWith("discard_global_snapshot");
+    expect(invokeMock).toHaveBeenCalledWith("discard_repo_snapshot", {
+      repoPath: "C:\\repo",
+    });
+  });
+
   it("uses repoPath for get_repo_local_config", async () => {
     invokeMock.mockResolvedValue({});
 

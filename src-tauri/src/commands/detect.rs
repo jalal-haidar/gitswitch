@@ -1,7 +1,11 @@
-use tauri::AppHandle;
-use std::{process::Command, fs, env, path::{Path, PathBuf}};
 use crate::errors::BackendError;
 use crate::git::no_window;
+use std::{
+    env, fs,
+    path::{Path, PathBuf},
+    process::Command,
+};
+use tauri::AppHandle;
 use uuid::Uuid;
 
 use crate::models::{GitProfile, ScannedRepo};
@@ -30,16 +34,27 @@ fn git_config_in_dir(dir: &Path, args: &[&str]) -> Option<String> {
         return None;
     }
     let s = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    if s.is_empty() { None } else { Some(s) }
+    if s.is_empty() {
+        None
+    } else {
+        Some(s)
+    }
 }
 
 #[tauri::command]
-pub fn detect_identities(_app: AppHandle, directory: Option<String>) -> Result<Vec<GitProfile>, String> {
+pub fn detect_identities(
+    _app: AppHandle,
+    directory: Option<String>,
+) -> Result<Vec<GitProfile>, String> {
     // If a directory is provided, run git commands there; otherwise use current dir
     let dir = directory
         .or_else(|| env::var("PWD").ok())
         .unwrap_or_default();
-    let path = if dir.is_empty() { Path::new(".") } else { Path::new(&dir) };
+    let path = if dir.is_empty() {
+        Path::new(".")
+    } else {
+        Path::new(&dir)
+    };
 
     // Helper to run git and capture stdout as trimmed string, returning detailed error on failure
     let run_git = |args: &[&str]| -> Result<Option<String>, BackendError> {
@@ -113,17 +128,15 @@ pub fn detect_identities(_app: AppHandle, directory: Option<String>) -> Result<V
             Ok(None) => String::new(),
             Err(e) => return Err(e.to_string()),
         },
-        Err(e) => {
-            match e.kind {
-                crate::errors::BackendErrorKind::GitNotFound
-                | crate::errors::BackendErrorKind::PermissionDenied => return Err(e.to_string()),
-                _ => match run_git(&["config", "--global", "--get", "user.email"]) {
-                    Ok(Some(v)) => v,
-                    Ok(None) => String::new(),
-                    Err(e2) => return Err(e2.to_string()),
-                },
-            }
-        }
+        Err(e) => match e.kind {
+            crate::errors::BackendErrorKind::GitNotFound
+            | crate::errors::BackendErrorKind::PermissionDenied => return Err(e.to_string()),
+            _ => match run_git(&["config", "--global", "--get", "user.email"]) {
+                Ok(Some(v)) => v,
+                Ok(None) => String::new(),
+                Err(e2) => return Err(e2.to_string()),
+            },
+        },
     };
 
     let signingkey = match run_git(&["config", "user.signingkey"]) {
@@ -133,25 +146,27 @@ pub fn detect_identities(_app: AppHandle, directory: Option<String>) -> Result<V
             Ok(None) => String::new(),
             Err(e) => return Err(e.to_string()),
         },
-        Err(e) => {
-            match e.kind {
-                crate::errors::BackendErrorKind::GitNotFound
-                | crate::errors::BackendErrorKind::PermissionDenied => return Err(e.to_string()),
-                _ => match run_git(&["config", "--global", "--get", "user.signingkey"]) {
-                    Ok(Some(v)) => v,
-                    Ok(None) => String::new(),
-                    Err(e2) => return Err(e2.to_string()),
-                },
-            }
-        }
+        Err(e) => match e.kind {
+            crate::errors::BackendErrorKind::GitNotFound
+            | crate::errors::BackendErrorKind::PermissionDenied => return Err(e.to_string()),
+            _ => match run_git(&["config", "--global", "--get", "user.signingkey"]) {
+                Ok(Some(v)) => v,
+                Ok(None) => String::new(),
+                Err(e2) => return Err(e2.to_string()),
+            },
+        },
     };
 
     // Also detect remote.origin.url (best-effort; no fallback to global)
-    let remote_url = run_git(&["config", "--get", "remote.origin.url"]).ok().flatten();
+    let remote_url = run_git(&["config", "--get", "remote.origin.url"])
+        .ok()
+        .flatten();
     let remote_service = remote_url.as_deref().map(detect_remote_service);
 
     // Detect simple SSH key presence in ~/.ssh (look for common private key names)
-    let home = env::var("HOME").or_else(|_| env::var("USERPROFILE")).unwrap_or_default();
+    let home = env::var("HOME")
+        .or_else(|_| env::var("USERPROFILE"))
+        .unwrap_or_default();
     let mut ssh_key_path: Option<String> = None;
     if !home.is_empty() {
         let ssh_dir = Path::new(&home).join(".ssh");
@@ -161,7 +176,11 @@ pub fn detect_identities(_app: AppHandle, directory: Option<String>) -> Result<V
                     let p = entry.path();
                     if let Some(fname) = p.file_name().and_then(|s| s.to_str()) {
                         // look for common private key filenames; we will store the path to the private key
-                        if fname == "id_ed25519" || fname == "id_rsa" || fname == "id_ecdsa" || fname == "id_dsa" {
+                        if fname == "id_ed25519"
+                            || fname == "id_rsa"
+                            || fname == "id_ecdsa"
+                            || fname == "id_dsa"
+                        {
                             ssh_key_path = Some(p.to_string_lossy().into_owned());
                             break;
                         }
@@ -191,7 +210,11 @@ pub fn detect_identities(_app: AppHandle, directory: Option<String>) -> Result<V
         email,
         color: "#6A5ACD".to_string(),
         ssh_key_path,
-        gpg_key_id: if signingkey.is_empty() { None } else { Some(signingkey) },
+        gpg_key_id: if signingkey.is_empty() {
+            None
+        } else {
+            Some(signingkey)
+        },
         is_default: false,
         remote_url,
         remote_service,
@@ -210,7 +233,9 @@ fn collect_repos(dir: &Path, depth: u32, max_depth: u32, results: &mut Vec<PathB
         results.push(dir.to_path_buf());
         return;
     }
-    let Ok(entries) = fs::read_dir(dir) else { return };
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
     for entry in entries.flatten() {
         let path = entry.path();
         if !path.is_dir() {
@@ -218,12 +243,13 @@ fn collect_repos(dir: &Path, depth: u32, max_depth: u32, results: &mut Vec<PathB
         }
         let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
         // Skip hidden dirs, large build/dependency dirs
-        if name.starts_with('.') ||
-           name == "node_modules" ||
-           name == "target" ||
-           name == "dist" ||
-           name == "build" ||
-           name == ".git" {
+        if name.starts_with('.')
+            || name == "node_modules"
+            || name == "target"
+            || name == "dist"
+            || name == "build"
+            || name == ".git"
+        {
             continue;
         }
         collect_repos(&path, depth + 1, max_depth, results);
@@ -243,7 +269,11 @@ fn validate_scan_root(root_path: &Path, root: &str) -> Result<(), String> {
 /// Scan `root` recursively (up to `max_depth`, default 5) for git repositories
 /// and return identity + remote information for each one found.
 #[tauri::command]
-pub fn scan_repos(app: AppHandle, root: String, max_depth: Option<u32>) -> Result<Vec<ScannedRepo>, String> {
+pub fn scan_repos(
+    app: AppHandle,
+    root: String,
+    max_depth: Option<u32>,
+) -> Result<Vec<ScannedRepo>, String> {
     let max_depth = max_depth.unwrap_or(5).min(10);
     let root_path = Path::new(&root);
     validate_scan_root(root_path, &root)?;
@@ -258,11 +288,15 @@ pub fn scan_repos(app: AppHandle, root: String, max_depth: Option<u32>) -> Resul
 
     let mut repos: Vec<ScannedRepo> = Vec::new();
     for repo_path in &repo_paths {
-        let user_name  = git_config_in_dir(repo_path, &["config", "--local", "--get", "user.name"]);
-        let user_email = git_config_in_dir(repo_path, &["config", "--local", "--get", "user.email"]);
+        let user_name = git_config_in_dir(repo_path, &["config", "--local", "--get", "user.name"]);
+        let user_email =
+            git_config_in_dir(repo_path, &["config", "--local", "--get", "user.email"]);
         let remote_url = git_config_in_dir(repo_path, &["config", "--get", "remote.origin.url"]);
         // Capture repo-local core.sshCommand if present so UI can show real per-repo SSH command
-        let core_ssh_cmd = git_config_in_dir(repo_path, &["config", "--local", "--get", "core.sshCommand"]);
+        let core_ssh_cmd = git_config_in_dir(
+            repo_path,
+            &["config", "--local", "--get", "core.sshCommand"],
+        );
         let remote_service = remote_url.as_deref().map(detect_remote_service);
 
         let name = repo_path
@@ -273,12 +307,14 @@ pub fn scan_repos(app: AppHandle, root: String, max_depth: Option<u32>) -> Resul
 
         // Find the first GitSwitch profile where name+email match the repo's local identity
         let matched_profile_id = match (&user_name, &user_email) {
-            (Some(uname), Some(uemail)) => {
-                config.profiles.iter().find(|p| {
+            (Some(uname), Some(uemail)) => config
+                .profiles
+                .iter()
+                .find(|p| {
                     p.name.trim().to_lowercase() == uname.trim().to_lowercase()
-                    && p.email.trim().to_lowercase() == uemail.trim().to_lowercase()
-                }).map(|p| p.id.clone())
-            }
+                        && p.email.trim().to_lowercase() == uemail.trim().to_lowercase()
+                })
+                .map(|p| p.id.clone()),
             _ => None,
         };
 
@@ -305,38 +341,62 @@ mod tests {
 
     #[test]
     fn detects_github_https() {
-        assert_eq!(detect_remote_service("https://github.com/user/repo.git"), "github");
+        assert_eq!(
+            detect_remote_service("https://github.com/user/repo.git"),
+            "github"
+        );
     }
 
     #[test]
     fn detects_github_ssh() {
-        assert_eq!(detect_remote_service("git@github.com:user/repo.git"), "github");
+        assert_eq!(
+            detect_remote_service("git@github.com:user/repo.git"),
+            "github"
+        );
     }
 
     #[test]
     fn detects_gitlab_https() {
-        assert_eq!(detect_remote_service("https://gitlab.com/user/repo.git"), "gitlab");
+        assert_eq!(
+            detect_remote_service("https://gitlab.com/user/repo.git"),
+            "gitlab"
+        );
     }
 
     #[test]
     fn detects_gitlab_self_hosted() {
-        assert_eq!(detect_remote_service("https://gitlab.mycompany.com/user/repo"), "gitlab");
+        assert_eq!(
+            detect_remote_service("https://gitlab.mycompany.com/user/repo"),
+            "gitlab"
+        );
     }
 
     #[test]
     fn detects_bitbucket() {
-        assert_eq!(detect_remote_service("git@bitbucket.org:user/repo.git"), "bitbucket");
+        assert_eq!(
+            detect_remote_service("git@bitbucket.org:user/repo.git"),
+            "bitbucket"
+        );
     }
 
     #[test]
     fn detects_other_for_unknown() {
-        assert_eq!(detect_remote_service("https://example.com/user/repo.git"), "other");
+        assert_eq!(
+            detect_remote_service("https://example.com/user/repo.git"),
+            "other"
+        );
     }
 
     #[test]
     fn detects_case_insensitive() {
-        assert_eq!(detect_remote_service("https://GITHUB.COM/User/Repo"), "github");
-        assert_eq!(detect_remote_service("https://GITLAB.COM/User/Repo"), "gitlab");
+        assert_eq!(
+            detect_remote_service("https://GITHUB.COM/User/Repo"),
+            "github"
+        );
+        assert_eq!(
+            detect_remote_service("https://GITLAB.COM/User/Repo"),
+            "gitlab"
+        );
     }
 
     // ── collect_repos ────────────────────────────────────────────
@@ -378,7 +438,9 @@ mod tests {
         collect_repos(&tmp, 0, 5, &mut results);
         // The repo inside node_modules should be skipped
         assert!(
-            !results.iter().any(|p| p.to_string_lossy().contains("node_modules")),
+            !results
+                .iter()
+                .any(|p| p.to_string_lossy().contains("node_modules")),
             "should skip repos inside node_modules"
         );
 
@@ -409,10 +471,8 @@ mod tests {
 
     #[test]
     fn validate_scan_root_rejects_file_path() {
-        let tmp = std::env::temp_dir().join(format!(
-            "gitswitch_test_scan_root_file_{}",
-            Uuid::new_v4()
-        ));
+        let tmp =
+            std::env::temp_dir().join(format!("gitswitch_test_scan_root_file_{}", Uuid::new_v4()));
         let _ = fs::write(&tmp, "not a directory");
 
         let result = validate_scan_root(&tmp, &tmp.to_string_lossy());

@@ -22,8 +22,12 @@ pub(crate) struct ResolvedRule {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum AutoSwitchDecision {
     Disabled,
-    MissingRepository { path: PathBuf },
-    AlreadyApplied { repo: PathBuf },
+    MissingRepository {
+        path: PathBuf,
+    },
+    AlreadyApplied {
+        repo: PathBuf,
+    },
     Apply {
         rule_id: String,
         profile_id: String,
@@ -87,7 +91,10 @@ pub fn start_auto_switch_watcher(app: AppHandle) {
             match run_watcher_loop(app.clone()) {
                 Ok(()) => break, // intentional shutdown — never happens currently
                 Err(error) => {
-                    eprintln!("[auto-switch] watcher loop stopped: {error}, restarting in {}s", backoff.as_secs());
+                    eprintln!(
+                        "[auto-switch] watcher loop stopped: {error}, restarting in {}s",
+                        backoff.as_secs()
+                    );
                     let _ = app.emit("auto-switch-error", error);
                     thread::sleep(backoff);
                     backoff = (backoff * 2).min(Duration::from_secs(30));
@@ -251,15 +258,15 @@ fn handle_event(
         // Use the git root as the canonical "affected path" so the UI shows
         // the repo, not an internal temp file that happened to trigger the event.
         let event_path = git_root.to_string_lossy().to_string();
-        set_last_auto_switch_event(
-            match_rule.profile_id.clone(),
-            event_path.clone(),
+        set_last_auto_switch_event(match_rule.profile_id.clone(), event_path.clone());
+        let _ = app.emit(
+            "auto-switch-triggered",
+            AutoSwitchEvent {
+                profile_id: match_rule.profile_id.clone(),
+                path: event_path,
+                occurred_at_epoch_ms: now_ms,
+            },
         );
-        let _ = app.emit("auto-switch-triggered", AutoSwitchEvent {
-            profile_id: match_rule.profile_id.clone(),
-            path: event_path,
-            occurred_at_epoch_ms: now_ms,
-        });
         // Stamp last_triggered_at on the directory rule that fired
         if let Err(error) = store::update_config(app, |config| {
             if let Some(rule) = config
@@ -292,8 +299,7 @@ pub(crate) fn select_best_rule<'a>(
         for rule in rules {
             if path_starts_with_ci(&normalized, &rule.root_path)
                 && best_match.as_ref().is_none_or(|(current, _)| {
-                    rule.root_path.components().count()
-                        > current.root_path.components().count()
+                    rule.root_path.components().count() > current.root_path.components().count()
                 })
             {
                 best_match = Some((rule, normalized.clone()));
@@ -336,7 +342,11 @@ where
         };
     };
 
-    if let Some(profile) = config.profiles.iter().find(|profile| profile.id == rule.profile_id) {
+    if let Some(profile) = config
+        .profiles
+        .iter()
+        .find(|profile| profile.id == rule.profile_id)
+    {
         let expected_ssh = profile.ssh_key_path.as_deref().and_then(|path| {
             (!path.is_empty()).then(|| {
                 format!(
@@ -406,7 +416,7 @@ pub(crate) fn normalize_path(path: &Path) -> Option<PathBuf> {
         let s = canonical.to_string_lossy();
         // The prefix is exactly 4 chars: \, \, ?, \
         // Using a regular string literal so the escape sequence is unambiguous.
-        if let Some(stripped) = s.strip_prefix("\\\\?\\" ) {
+        if let Some(stripped) = s.strip_prefix("\\\\?\\") {
             return Some(PathBuf::from(stripped));
         }
     }
@@ -444,11 +454,7 @@ fn build_signature(config: &crate::models::AppConfig) -> String {
 
     rules.sort();
 
-    format!(
-        "auto:{}::{}",
-        config.settings.auto_switch,
-        rules.join(";")
-    )
+    format!("auto:{}::{}", config.settings.auto_switch, rules.join(";"))
 }
 
 #[cfg(test)]
@@ -460,13 +466,19 @@ mod tests {
 
     #[test]
     fn ignores_node_modules() {
-        assert!(should_ignore_path(Path::new("/project/node_modules/foo/index.js")));
-        assert!(should_ignore_path(Path::new("C:\\project\\node_modules\\bar.js")));
+        assert!(should_ignore_path(Path::new(
+            "/project/node_modules/foo/index.js"
+        )));
+        assert!(should_ignore_path(Path::new(
+            "C:\\project\\node_modules\\bar.js"
+        )));
     }
 
     #[test]
     fn ignores_git_objects() {
-        assert!(should_ignore_path(Path::new("/repo/.git/objects/ab/cdef123")));
+        assert!(should_ignore_path(Path::new(
+            "/repo/.git/objects/ab/cdef123"
+        )));
         assert!(should_ignore_path(Path::new("/repo/.git/refs/heads/main")));
         assert!(should_ignore_path(Path::new("/repo/.git/logs/HEAD")));
     }
@@ -589,7 +601,10 @@ mod tests {
         config.directory_rules.reverse();
         let sig_b = build_signature(&config);
 
-        assert_eq!(sig_a, sig_b, "signature should be stable regardless of rule order");
+        assert_eq!(
+            sig_a, sig_b,
+            "signature should be stable regardless of rule order"
+        );
     }
 
     // ── last event store ─────────────────────────────────────────

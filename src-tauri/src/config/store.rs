@@ -10,69 +10,11 @@ use keyring::Entry;
 use once_cell::sync::Lazy;
 
 use crate::errors::BackendError;
-use crate::models::{AppConfig, GitConfigSnapshot};
-
-// In-memory transient snapshots keyed by repo path. Not persisted to disk.
-static TRANSIENT_SNAPSHOTS: Lazy<Mutex<HashMap<String, GitConfigSnapshot>>> =
-    Lazy::new(|| Mutex::new(HashMap::new()));
+use crate::models::AppConfig;
 
 /// Serializes the complete read-modify-write transaction. This prevents two
 /// commands from loading the same config and silently overwriting each other.
 static CONFIG_TXN_LOCK: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
-
-/// Normalize a snapshot key to a canonical form so the same repo directory
-/// always resolves to the same key regardless of how the path is represented.
-fn normalize_snapshot_key(key: &str) -> String {
-    // Try to canonicalize; fall back to lowercased + forward-slash form.
-    if let Ok(canonical) = std::fs::canonicalize(key) {
-        let s = canonical.to_string_lossy().to_string();
-        // Strip Windows extended-length prefix for consistency
-        #[cfg(windows)]
-        {
-            if let Some(stripped) = s.strip_prefix("\\\\?\\") {
-                return stripped.to_lowercase();
-            }
-        }
-        return s.to_lowercase();
-    }
-    // Fallback: normalize slashes and case
-    key.replace('\\', "/").to_lowercase()
-}
-
-pub fn set_transient_snapshot(key: &str, snap: GitConfigSnapshot) {
-    let normalized = normalize_snapshot_key(key);
-    match TRANSIENT_SNAPSHOTS.lock() {
-        Ok(mut m) => {
-            m.insert(normalized, snap);
-        }
-        Err(poisoned) => {
-            eprintln!("[store] snapshot mutex poisoned, recovering for write");
-            poisoned.into_inner().insert(normalized, snap);
-        }
-    }
-}
-
-pub fn take_transient_snapshot(key: &str) -> Option<GitConfigSnapshot> {
-    let normalized = normalize_snapshot_key(key);
-    match TRANSIENT_SNAPSHOTS.lock() {
-        Ok(mut m) => m.remove(&normalized),
-        Err(poisoned) => {
-            eprintln!("[store] snapshot mutex poisoned, recovering for take");
-            poisoned.into_inner().remove(&normalized)
-        }
-    }
-}
-
-pub fn has_transient_snapshot(key: &str) -> bool {
-    let normalized = normalize_snapshot_key(key);
-    match TRANSIENT_SNAPSHOTS.lock() {
-        Ok(m) => m.contains_key(&normalized),
-        Err(poisoned) => {
-            eprintln!("[store] snapshot mutex poisoned, recovering for check");
-            poisoned.into_inner().contains_key(&normalized)
-        }
-    }
-}
 
 const CONFIG_FILE_NAME: &str = "profiles.json";
 const KEYRING_SERVICE: &str = "gitswitch";
@@ -160,10 +102,7 @@ where
     Ok(result)
 }
 
-pub(crate) fn load_config_at(
-    path: &Path,
-    credentials: &dyn CredentialStore,
-) -> Result<AppConfig> {
+pub(crate) fn load_config_at(path: &Path, credentials: &dyn CredentialStore) -> Result<AppConfig> {
     let backup_path = path.with_extension("json.bak");
     if !path.exists() && backup_path.exists() {
         fs::rename(&backup_path, path)
@@ -421,7 +360,7 @@ fn restore_config(path: &Path, contents: Option<&[u8]>) -> Result<()> {
     }
 }
 
-fn atomic_replace(config_path: &Path, contents: &[u8]) -> Result<()> {
+pub(crate) fn atomic_replace(config_path: &Path, contents: &[u8]) -> Result<()> {
     if let Some(parent) = config_path.parent() {
         fs::create_dir_all(parent)
             .with_context(|| format!("Failed to create config directory at {parent:?}"))?;
@@ -783,141 +722,5 @@ mod tests {
             .as_ref()
             .unwrap()
             .contains("profile-1:ssh_key_path"));
-    }
-
-    // ── normalize_snapshot_key ────────────────────────────────────
-
-    #[test]
-    fn normalize_key_lowercases() {
-        let key = normalize_snapshot_key("C:/Users/Alice/Projects");
-        assert_eq!(key, key.to_lowercase());
-    }
-
-    #[test]
-    fn normalize_key_backslash_to_forward() {
-        // When the path doesn't exist on disk, fallback replaces backslashes
-        let key = normalize_snapshot_key("Z:\\nonexistent\\path\\repo");
-        assert!(
-            !key.contains('\\'),
-            "should not contain backslashes: {}",
-            key
-        );
-        assert!(key.contains("nonexistent"));
-    }
-
-    #[test]
-    fn normalize_key_same_path_different_slashes() {
-        // Both representations of the same non-existent path should produce the same key
-        let a = normalize_snapshot_key("Z:/fake/path/repo");
-        let b = normalize_snapshot_key("Z:\\fake\\path\\repo");
-        assert_eq!(a, b);
-    }
-
-    #[test]
-    fn normalize_key_same_path_different_case() {
-        let a = normalize_snapshot_key("Z:/FAKE/PATH");
-        let b = normalize_snapshot_key("Z:/fake/path");
-        assert_eq!(a, b);
-    }
-
-    #[test]
-    fn normalize_key_empty_string() {
-        let key = normalize_snapshot_key("");
-        assert_eq!(key, "");
-    }
-
-    // ── transient snapshots ──────────────────────────────────────
-
-    fn make_snapshot() -> GitConfigSnapshot {
-        GitConfigSnapshot {
-            user_name: Some("Alice".into()),
-            user_email: Some("alice@example.com".into()),
-            user_signingkey: None,
-            commit_gpgsign: None,
-            core_ssh_command: None,
-        }
-    }
-
-    #[test]
-    fn set_and_take_snapshot_roundtrip() {
-        let key = "test_roundtrip_unique_001";
-        let snap = make_snapshot();
-        set_transient_snapshot(key, snap.clone());
-
-        let taken = take_transient_snapshot(key);
-        assert!(taken.is_some());
-        let taken = taken.unwrap();
-        assert_eq!(taken.user_name, snap.user_name);
-        assert_eq!(taken.user_email, snap.user_email);
-    }
-
-    #[test]
-    fn take_removes_snapshot() {
-        let key = "test_take_removes_002";
-        set_transient_snapshot(key, make_snapshot());
-        let _ = take_transient_snapshot(key);
-        assert!(!has_transient_snapshot(key));
-        assert!(take_transient_snapshot(key).is_none());
-    }
-
-    #[test]
-    fn has_snapshot_before_and_after() {
-        let key = "test_has_snapshot_003";
-        // Clear any previous
-        let _ = take_transient_snapshot(key);
-
-        assert!(!has_transient_snapshot(key));
-        set_transient_snapshot(key, make_snapshot());
-        assert!(has_transient_snapshot(key));
-
-        let _ = take_transient_snapshot(key);
-        assert!(!has_transient_snapshot(key));
-    }
-
-    #[test]
-    fn snapshot_key_normalized_across_operations() {
-        // Setting with one slash style, reading with another should find it
-        let key_a = "Z:\\test_norm_match\\repo_004";
-        let key_b = "Z:/test_norm_match/repo_004";
-
-        set_transient_snapshot(key_a, make_snapshot());
-        assert!(has_transient_snapshot(key_b));
-        let taken = take_transient_snapshot(key_b);
-        assert!(taken.is_some());
-    }
-
-    #[test]
-    fn snapshot_key_case_insensitive() {
-        let key_a = "Z:/TEST_CASE/REPO_005";
-        let key_b = "Z:/test_case/repo_005";
-
-        set_transient_snapshot(key_a, make_snapshot());
-        assert!(has_transient_snapshot(key_b));
-        let _ = take_transient_snapshot(key_b);
-    }
-
-    #[test]
-    fn take_nonexistent_returns_none() {
-        let result = take_transient_snapshot("definitely_not_a_real_key_006");
-        assert!(result.is_none());
-    }
-
-    #[test]
-    fn overwrite_snapshot_replaces_value() {
-        let key = "test_overwrite_007";
-        set_transient_snapshot(key, make_snapshot());
-
-        let updated = GitConfigSnapshot {
-            user_name: Some("Bob".into()),
-            user_email: Some("bob@example.com".into()),
-            user_signingkey: None,
-            commit_gpgsign: None,
-            core_ssh_command: None,
-        };
-        set_transient_snapshot(key, updated);
-
-        let taken = take_transient_snapshot(key).unwrap();
-        assert_eq!(taken.user_name.as_deref(), Some("Bob"));
-        assert_eq!(taken.user_email.as_deref(), Some("bob@example.com"));
     }
 }

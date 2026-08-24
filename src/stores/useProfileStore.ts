@@ -51,9 +51,6 @@ export interface RepoLocalConfig {
   coreSshCommand?: string;
 }
 
-/** Snapshot of the global git config, used for undo after switching. */
-export type GitConfigSnapshot = RepoLocalConfig;
-
 interface ProfileState {
   profiles: GitProfile[];
   directoryRules: DirectoryRule[];
@@ -61,6 +58,7 @@ interface ProfileState {
   autoSwitchLoading: boolean;
   lastAutoSwitchEvent: AutoSwitchEvent | null;
   activeProfileId: string | null;
+  hasGlobalSnapshot: boolean;
   loading: boolean;
   rulesLoading: boolean;
   error: string | null;
@@ -77,6 +75,8 @@ interface ProfileState {
   updateProfile: (profile: GitProfile) => Promise<void>;
   deleteProfile: (id: string) => Promise<void>;
   switchProfileGlobally: (id: string) => Promise<void>;
+  restoreGlobalSnapshot: () => Promise<void>;
+  discardGlobalSnapshot: () => Promise<void>;
   detectIdentities: (directory?: string) => Promise<void>;
   fetchAutoSwitchSetting: () => Promise<void>;
   setAutoSwitchEnabled: (enabled: boolean) => Promise<void>;
@@ -90,6 +90,7 @@ interface ProfileState {
   setTheme: (theme: string) => Promise<void>;
   scanRepos: (root: string, maxDepth?: number) => Promise<ScannedRepo[]>;
   restoreRepoSnapshot: (repoPath: string) => Promise<void>;
+  discardRepoSnapshot: (repoPath: string) => Promise<void>;
   getRepoLocalConfig: (repoPath: string) => Promise<RepoLocalConfig>;
 }
 
@@ -100,6 +101,7 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
   autoSwitchLoading: false,
   lastAutoSwitchEvent: null,
   activeProfileId: null,
+  hasGlobalSnapshot: false,
   loading: false,
   rulesLoading: false,
   error: null,
@@ -151,11 +153,12 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
   fetchProfiles: async () => {
     set({ loading: true, error: null });
     try {
-      const [profiles, activeProfileId] = await Promise.all([
+      const [profiles, activeProfileId, hasGlobalSnapshot] = await Promise.all([
         invoke<GitProfile[]>("get_profiles"),
         invoke<string | null>("get_active_profile_id"),
+        invoke<boolean>("has_global_snapshot"),
       ]);
-      set({ profiles, activeProfileId, loading: false });
+      set({ profiles, activeProfileId, hasGlobalSnapshot, loading: false });
     } catch (e) {
       set({ error: friendlyErrorMessage(e), loading: false });
     }
@@ -222,6 +225,28 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
       set({ loading: false });
     } catch (e) {
       set({ error: friendlyErrorMessage(e), loading: false });
+      throw e;
+    }
+  },
+
+  restoreGlobalSnapshot: async () => {
+    set({ loading: true, error: null });
+    try {
+      await invoke("restore_global_snapshot");
+      await get().fetchProfiles();
+      set({ loading: false });
+    } catch (e) {
+      set({ error: friendlyErrorMessage(e), loading: false });
+      throw e;
+    }
+  },
+
+  discardGlobalSnapshot: async () => {
+    try {
+      await invoke("discard_global_snapshot");
+      set({ hasGlobalSnapshot: false });
+    } catch (e) {
+      set({ error: friendlyErrorMessage(e) });
       throw e;
     }
   },
@@ -314,6 +339,14 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
   restoreRepoSnapshot: async (repoPath) => {
     try {
       await invoke("restore_repo_snapshot", { repoPath });
+    } catch (e) {
+      set({ error: friendlyErrorMessage(e) });
+      throw e;
+    }
+  },
+  discardRepoSnapshot: async (repoPath) => {
+    try {
+      await invoke("discard_repo_snapshot", { repoPath });
     } catch (e) {
       set({ error: friendlyErrorMessage(e) });
       throw e;
