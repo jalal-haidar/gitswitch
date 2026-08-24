@@ -31,7 +31,7 @@ pub struct DirectoryRule {
     pub id: String,
     pub path: String,
     pub profile_id: String,
-    /// Epoch-ms timestamp of the last auto-switch event for this rule
+    /// Epoch-ms timestamp of the last successful automatic repo-local apply.
     #[serde(default)]
     pub last_triggered_at: Option<u64>,
 }
@@ -51,6 +51,33 @@ pub struct RepoApplyEvent {
     pub repository_path: String,
     pub source: RepoApplySource,
     pub occurred_at_epoch_ms: u64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum WatcherLifecycleState {
+    Degraded,
+    Restarting,
+    Recovered,
+    Stopped,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WatcherLifecycleEvent {
+    pub state: WatcherLifecycleState,
+    pub message: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retry_in_ms: Option<u64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AutoSwitchFailureEvent {
+    pub rule_id: String,
+    pub profile_id: String,
+    pub repository_path: String,
+    pub message: String,
 }
 
 /// Returned by `scan_repos` — describes a discovered git repository.
@@ -168,6 +195,39 @@ mod tests {
                 "repositoryPath": "C:/code/repo",
                 "source": "auto",
                 "occurredAtEpochMs": 42
+            })
+        );
+    }
+
+    #[test]
+    fn watcher_events_use_explicit_camel_case_contracts() {
+        let lifecycle = WatcherLifecycleEvent {
+            state: WatcherLifecycleState::Restarting,
+            message: "retrying".to_string(),
+            retry_in_ms: Some(2_000),
+        };
+        assert_eq!(
+            serde_json::to_value(lifecycle).unwrap(),
+            serde_json::json!({
+                "state": "restarting",
+                "message": "retrying",
+                "retryInMs": 2_000
+            })
+        );
+
+        let failure = AutoSwitchFailureEvent {
+            rule_id: "rule-1".to_string(),
+            profile_id: "work".to_string(),
+            repository_path: "C:/code/repo".to_string(),
+            message: "apply failed".to_string(),
+        };
+        assert_eq!(
+            serde_json::to_value(failure).unwrap(),
+            serde_json::json!({
+                "ruleId": "rule-1",
+                "profileId": "work",
+                "repositoryPath": "C:/code/repo",
+                "message": "apply failed"
             })
         );
     }

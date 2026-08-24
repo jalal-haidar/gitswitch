@@ -15,6 +15,7 @@ import { normalizeBackendError, friendlyErrorMessage } from "../utils/error";
 import { useToast } from "./ui/useToast";
 import {
   DirectoryRule,
+  AutoSwitchFailureEvent,
   RepoLocalConfig,
   useProfileStore,
 } from "../stores/useProfileStore";
@@ -178,6 +179,7 @@ export const DirectoryRulesSection: React.FC = () => {
     directoryRules,
     autoSwitchEnabled,
     autoSwitchLoading,
+    watcherLifecycle,
     rulesLoading,
     fetchAutoSwitchSetting,
     setAutoSwitchEnabled,
@@ -210,14 +212,22 @@ export const DirectoryRulesSection: React.FC = () => {
     let unlistenFailed: (() => void) | undefined;
     const setup = async () => {
       const { listen } = await import("@tauri-apps/api/event");
-      unlistenFailed = await listen<string>("auto-switch-failed", (event) => {
-        const info = normalizeBackendError(event.payload ?? "");
-        toast.show({
-          message: `Auto-switch failed: ${info.message}`,
-          kind: "error",
-          duration: info.hint ? 10000 : 8000,
-        });
-      });
+      unlistenFailed = await listen<AutoSwitchFailureEvent>(
+        "auto-switch-failed",
+        (event) => {
+          const info = normalizeBackendError(event.payload.message ?? "");
+          const repoName = event.payload.repositoryPath
+            .replace(/\\/g, "/")
+            .split("/")
+            .filter(Boolean)
+            .pop();
+          toast.show({
+            message: `Automatic repo apply failed${repoName ? ` for ${repoName}` : ""}: ${info.message}`,
+            kind: "error",
+            duration: info.hint ? 10000 : 8000,
+          });
+        },
+      );
     };
     setup().catch(() => undefined);
     return () => {
@@ -236,8 +246,7 @@ export const DirectoryRulesSection: React.FC = () => {
     return directoryRules.some(
       (rule) =>
         rule.id !== draft.id &&
-        rule.path.trim().toLowerCase() === path &&
-        rule.profileId === draft.profileId,
+        rule.path.trim().toLowerCase() === path,
     );
   }, [directoryRules, draft]);
 
@@ -253,7 +262,9 @@ export const DirectoryRulesSection: React.FC = () => {
     try {
       await setAutoSwitchEnabled(enabled);
       toast.show({
-        message: enabled ? "Auto-switch enabled" : "Auto-switch disabled",
+        message: enabled
+          ? "Automatic repo apply enabled"
+          : "Automatic repo apply disabled",
         kind: "success",
       });
     } catch (e) {
@@ -330,20 +341,20 @@ export const DirectoryRulesSection: React.FC = () => {
         <h2 id="rules-heading">Directory Rules</h2>
         <div className="rules-header-actions">
           <label className="toggle-row" htmlFor="auto-switch-toggle">
-            <span>Auto-switch</span>
+            <span>Auto-apply</span>
             <input
               id="auto-switch-toggle"
               type="checkbox"
               checked={autoSwitchEnabled}
               onChange={handleToggleAutoSwitch}
               disabled={autoSwitchLoading}
-              aria-label="Enable automatic profile switching"
+              aria-label="Enable automatic repo-local profile application"
             />
           </label>
           <button
             className="btn btn-primary"
             type="button"
-            title="Create a directory rule: whenever you save a file inside a matched folder, GitSwitch automatically switches to the assigned profile — no manual switching needed."
+            title="Create a rule that applies a profile to a repository's local Git config after relevant filesystem changes beneath the selected root."
             onClick={startCreate}
           >
             <Plus size={16} /> Add Rule
@@ -353,13 +364,40 @@ export const DirectoryRulesSection: React.FC = () => {
 
       <div className="muted rules-status" role="status" aria-live="polite">
         {autoSwitchEnabled
-          ? `Auto-switch is on. Watching ${watchedPathCount} path${watchedPathCount === 1 ? "" : "s"}.`
-          : "Auto-switch is off."}
+          ? watcherLifecycle?.state === "recovered"
+            ? `Auto-apply recovered. Watching ${watchedPathCount} configured path${watchedPathCount === 1 ? "" : "s"}.`
+            : `Auto-apply is on. Watching ${watchedPathCount} configured path${watchedPathCount === 1 ? "" : "s"}.`
+          : "Auto-apply is off."}
       </div>
 
+      {(watcherLifecycle?.state === "degraded" ||
+        watcherLifecycle?.state === "restarting") && (
+        <div className="watcher-health watcher-health--degraded" role="alert">
+          <strong>
+            {watcherLifecycle.state === "restarting"
+              ? "Watcher restarting automatically"
+              : "Watcher degraded"}
+          </strong>
+          <span>
+            {watcherLifecycle.message}
+            {watcherLifecycle.retryInMs
+              ? ` Retrying in ${Math.ceil(watcherLifecycle.retryInMs / 1000)}s.`
+              : ""}
+          </span>
+        </div>
+      )}
+
+      {autoSwitchEnabled && watcherLifecycle?.state === "stopped" && (
+        <div className="watcher-health" role="status">
+          <strong>Watcher stopped</strong>
+          <span>{watcherLifecycle.message}</span>
+        </div>
+      )}
+
       <div className="muted rules-status-note" role="note">
-        Rules write local git config (.git/config), which overrides global
-        config in matched repositories.
+        Rules enforce repo-local Git config after relevant create, modify,
+        rename, or remove activity beneath watched roots. Terminal navigation
+        and <code>cd</code> alone do not trigger them.
       </div>
 
       {showCreate && (
@@ -390,18 +428,18 @@ export const DirectoryRulesSection: React.FC = () => {
           <div className="welcome-icon">
             <FolderOpen size={32} />
           </div>
-          <h3>Auto-switch by directory</h3>
+          <h3>Auto-apply by filesystem activity</h3>
           <p className="welcome-tagline">
-            GitSwitch can switch your Git identity automatically when you work
-            in different folders — no manual switching needed.
+            GitSwitch can enforce a profile in each repository’s local Git
+            config when relevant files change beneath a watched root.
           </p>
           <ol className="welcome-steps">
             <li>
               <span className="step-num">1</span>
               <div>
-                <strong>Enable Auto-switch</strong>
+                <strong>Enable Auto-apply</strong>
                 <span>
-                  Toggle <strong>Auto-switch</strong> on above. GitSwitch
+                  Toggle <strong>Auto-apply</strong> on above. GitSwitch
                   watches your filesystem in the background.
                 </span>
               </div>
@@ -412,8 +450,8 @@ export const DirectoryRulesSection: React.FC = () => {
                 <strong>Add a rule</strong>
                 <span>
                   Click <strong>+ Add Rule</strong> and pick a folder (e.g.{" "}
-                  <code>C:\work</code>) and which profile to activate when a
-                  file change is detected inside it.
+                  <code>C:\work</code>) and which profile to apply when relevant
+                  repository activity is detected beneath it.
                 </span>
               </div>
             </li>
@@ -422,8 +460,9 @@ export const DirectoryRulesSection: React.FC = () => {
               <div>
                 <strong>Work normally</strong>
                 <span>
-                  Save any file in that folder — GitSwitch silently applies the
-                  matching profile's identity to that repository's local config.
+                  Create, edit, rename, or remove a source file — GitSwitch
+                  applies the matching profile to that repository. Entering the
+                  directory or running <code>cd</code> does nothing by itself.
                 </span>
               </div>
             </li>
@@ -455,7 +494,7 @@ export const DirectoryRulesSection: React.FC = () => {
                     <div className="muted">Profile: {profileLabel}</div>
                     {rule.lastTriggeredAt ? (
                       <div className="muted rule-last-triggered">
-                        Last triggered:{" "}
+                        Last automatically applied:{" "}
                         {new Date(rule.lastTriggeredAt).toLocaleString()}
                       </div>
                     ) : null}

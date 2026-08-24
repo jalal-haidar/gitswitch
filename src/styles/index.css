@@ -997,6 +997,26 @@ input::placeholder {
   margin-bottom: 0.75rem;
 }
 
+.watcher-health {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-bottom: 0.75rem;
+  padding: 0.75rem 0.875rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+}
+
+.watcher-health--degraded {
+  border-color: rgba(239, 68, 68, 0.45);
+  background: rgba(239, 68, 68, 0.08);
+}
+
+.watcher-health strong {
+  color: var(--text-primary);
+}
+
 .rule-list {
   display: flex;
   flex-direction: column;

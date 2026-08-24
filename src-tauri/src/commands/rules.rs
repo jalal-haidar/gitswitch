@@ -2,8 +2,33 @@ use tauri::AppHandle;
 use tauri_plugin_autostart::ManagerExt;
 use uuid::Uuid;
 
+use crate::auto_switch;
 use crate::config::store;
 use crate::models::DirectoryRule;
+
+fn canonical_rule_path(raw: &str) -> Result<String, String> {
+    let path = std::path::Path::new(raw.trim());
+    if raw.trim().is_empty() {
+        return Err("Rule path is required".to_string());
+    }
+    if !path.exists() {
+        return Err(format!("Directory does not exist: {}", path.display()));
+    }
+    if !path.is_dir() {
+        return Err(format!("Path is not a directory: {}", path.display()));
+    }
+    auto_switch::normalize_path(path)
+        .map(|path| path.to_string_lossy().into_owned())
+        .ok_or_else(|| format!("Could not canonicalize directory: {}", path.display()))
+}
+
+fn rule_paths_equal(left: &str, right: &str) -> bool {
+    let left = auto_switch::normalize_path(std::path::Path::new(left))
+        .unwrap_or_else(|| std::path::PathBuf::from(left));
+    let right = auto_switch::normalize_path(std::path::Path::new(right))
+        .unwrap_or_else(|| std::path::PathBuf::from(right));
+    auto_switch::paths_equal(&left, &right)
+}
 
 #[tauri::command]
 pub fn get_auto_switch_enabled(app: AppHandle) -> Result<bool, String> {
@@ -87,17 +112,7 @@ pub fn add_directory_rule(
     app: AppHandle,
     mut rule: DirectoryRule,
 ) -> Result<DirectoryRule, String> {
-    let path = rule.path.trim().to_string();
-    if path.is_empty() {
-        return Err("Rule path is required".to_string());
-    }
-
-    if !std::path::Path::new(&path).exists() {
-        return Err(format!("Directory does not exist: {}", path));
-    }
-    if !std::path::Path::new(&path).is_dir() {
-        return Err(format!("Path is not a directory: {}", path));
-    }
+    let path = canonical_rule_path(&rule.path)?;
 
     if rule.id.is_empty() {
         rule.id = Uuid::new_v4().to_string();
@@ -108,12 +123,12 @@ pub fn add_directory_rule(
         if !config.profiles.iter().any(|p| p.id == rule.profile_id) {
             return Err("Selected profile does not exist".to_string());
         }
-        if config.directory_rules.iter().any(|existing| {
-            existing.path.eq_ignore_ascii_case(&rule.path) && existing.profile_id == rule.profile_id
-        }) {
-            return Err(
-                "A directory rule with the same path and profile already exists".to_string(),
-            );
+        if config
+            .directory_rules
+            .iter()
+            .any(|existing| rule_paths_equal(&existing.path, &rule.path))
+        {
+            return Err("A directory rule already exists for this path".to_string());
         }
         config.directory_rules.push(rule.clone());
         Ok(rule.clone())
@@ -126,30 +141,18 @@ pub fn update_directory_rule(app: AppHandle, rule: DirectoryRule) -> Result<Dire
         return Err("Rule id is required".to_string());
     }
 
-    let path = rule.path.trim().to_string();
-    if path.is_empty() {
-        return Err("Rule path is required".to_string());
-    }
-
-    if !std::path::Path::new(&path).exists() {
-        return Err(format!("Directory does not exist: {}", path));
-    }
-    if !std::path::Path::new(&path).is_dir() {
-        return Err(format!("Path is not a directory: {}", path));
-    }
+    let path = canonical_rule_path(&rule.path)?;
 
     store::update_config(&app, |config| {
         if !config.profiles.iter().any(|p| p.id == rule.profile_id) {
             return Err("Selected profile does not exist".to_string());
         }
-        if config.directory_rules.iter().any(|existing| {
-            existing.id != rule.id
-                && existing.path.eq_ignore_ascii_case(&path)
-                && existing.profile_id == rule.profile_id
-        }) {
-            return Err(
-                "A directory rule with the same path and profile already exists".to_string(),
-            );
+        if config
+            .directory_rules
+            .iter()
+            .any(|existing| existing.id != rule.id && rule_paths_equal(&existing.path, &path))
+        {
+            return Err("A directory rule already exists for this path".to_string());
         }
 
         let existing = config
@@ -200,4 +203,46 @@ pub fn set_theme(app: AppHandle, theme: String) -> Result<String, String> {
         config.settings.theme = theme.clone();
         Ok(theme.clone())
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    static TEST_COUNTER: AtomicUsize = AtomicUsize::new(0);
+
+    fn test_root() -> std::path::PathBuf {
+        let suffix = TEST_COUNTER.fetch_add(1, Ordering::Relaxed);
+        let root = std::env::temp_dir().join(format!(
+            "gitswitch-rule-path-{}-{suffix}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(root.join("child")).unwrap();
+        root
+    }
+
+    #[test]
+    fn canonical_rule_path_collapses_equivalent_existing_paths() {
+        let root = test_root();
+        let alias = root.join("child").join("..");
+        let canonical = canonical_rule_path(root.to_string_lossy().as_ref()).unwrap();
+        let canonical_alias = canonical_rule_path(alias.to_string_lossy().as_ref()).unwrap();
+
+        assert_eq!(canonical, canonical_alias);
+        assert!(rule_paths_equal(&canonical, &canonical_alias));
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn canonical_rule_path_rejects_non_directories() {
+        let root = test_root();
+        let file = root.join("file.txt");
+        std::fs::write(&file, "content").unwrap();
+
+        assert!(canonical_rule_path(file.to_string_lossy().as_ref())
+            .unwrap_err()
+            .contains("not a directory"));
+        std::fs::remove_dir_all(root).unwrap();
+    }
 }

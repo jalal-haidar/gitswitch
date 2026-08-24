@@ -18,6 +18,7 @@ import {
   RepoApplyEvent,
   RepoLocalConfig,
   ScannedRepo,
+  WatcherLifecycleEvent,
   useProfileStore,
 } from "../stores/useProfileStore";
 import { useToast } from "./ui/useToast";
@@ -120,7 +121,7 @@ export const Dashboard: React.FC = () => {
       });
   }, [globalActiveProfileId, profiles]);
 
-  // Keep a ref so the auto-switch listener always has the latest toast without re-subscribing
+  // Keep a ref so watcher and automatic-apply listeners use the latest toast.
   const toastRef = useRef(toast);
   useEffect(() => {
     toastRef.current = toast;
@@ -160,18 +161,35 @@ export const Dashboard: React.FC = () => {
     };
   }, []);
 
-  // Alert when the auto-switch file watcher dies unexpectedly
+  // Track watcher degradation and recovery without claiming a restart is required.
   useEffect(() => {
     let unlisten: (() => void) | undefined;
     const setup = async () => {
       const { listen } = await import("@tauri-apps/api/event");
-      unlisten = await listen<string>("auto-switch-error", (event) => {
-        toastRef.current.show({
-          message: `Auto-switch stopped: ${event.payload}. Restart the app to re-enable it.`,
-          kind: "error",
-          duration: 10000,
-        });
-      });
+      unlisten = await listen<WatcherLifecycleEvent>(
+        "auto-switch-lifecycle",
+        (event) => {
+          const state = useProfileStore.getState();
+          const previousState = state.watcherLifecycle?.state;
+          state.setWatcherLifecycle(event.payload);
+          if (event.payload.state === "degraded") {
+            toastRef.current.show({
+              message: `Repository activity watcher degraded: ${event.payload.message}`,
+              kind: "error",
+              duration: 10000,
+            });
+          } else if (
+            event.payload.state === "recovered" &&
+            (previousState === "degraded" || previousState === "restarting")
+          ) {
+            toastRef.current.show({
+              message: "Repository activity watcher recovered",
+              kind: "success",
+              duration: 4500,
+            });
+          }
+        },
+      );
     };
     setup().catch(() => undefined);
     return () => {
@@ -909,10 +927,11 @@ export const Dashboard: React.FC = () => {
               <li>
                 <span className="step-num">3</span>
                 <div>
-                  <strong>Auto-switch by folder (optional)</strong>
+                  <strong>Auto-apply by repository activity (optional)</strong>
                   <span>
-                    Go to <strong>Directory Rules</strong> to activate profiles
-                    automatically when you enter a project folder.
+                    Directory Rules apply a profile to a repository’s local Git
+                    config after relevant file changes. Entering a folder or
+                    running <code>cd</code> alone does not trigger a rule.
                   </span>
                 </div>
               </li>

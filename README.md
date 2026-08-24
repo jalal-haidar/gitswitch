@@ -20,7 +20,7 @@
 
 ## What is GitSwitch?
 
-GitSwitch is a lightweight desktop app built with **Tauri + React** that lets you create named Git profiles (name, email, SSH key, GPG key) and switch between them with a single click — globally or per-directory automatically.
+GitSwitch is a lightweight desktop app built with **Tauri + React** that lets you create named Git profiles (name, email, SSH key, GPG key), switch globally with one click, and enforce profiles in repository-local Git config after relevant filesystem activity.
 
 ---
 
@@ -30,7 +30,7 @@ GitSwitch is a lightweight desktop app built with **Tauri + React** that lets yo
 | ---------------------------------------------------- | ------ |
 | Create & manage multiple Git profiles                | ✅     |
 | One-click global identity switch                     | ✅     |
-| Per-directory auto-switch rules                      | ✅     |
+| Repo-local directory activity rules                  | ✅     |
 | Detect existing identities from git config           | ✅     |
 | Multi-repo scanner (bulk identity discovery & apply) | ✅     |
 | Duplicate profile                                    | ✅     |
@@ -47,6 +47,8 @@ GitSwitch is a lightweight desktop app built with **Tauri + React** that lets yo
 | Profile search / filter                              | ✅     |
 | Keyboard shortcuts                                   | ✅     |
 | macOS / Linux support                                | 🔜     |
+
+Directory rules watch configured roots for relevant create, modify, rename, and remove activity. When activity belongs to a Git repository, GitSwitch transactionally applies the selected profile to that repository's `.git/config`; it does not change the verified global profile. Access-only events, Git internals, common dependency/build output, and temporary files are ignored. Merely opening a terminal, entering a directory, or running `cd` does not trigger a rule.
 
 ---
 

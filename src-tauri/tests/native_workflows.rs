@@ -446,10 +446,10 @@ fn auto_switch_decision_is_deterministic_without_a_watcher() {
 
     let non_repo_event = parent.join("outside-repo.txt");
     fs::write(&non_repo_event, b"not in a repository\n").unwrap();
-    assert!(matches!(
+    assert_eq!(
         decide_auto_switch(&sandbox, &config, &rules[..1], &[non_repo_event], None,),
-        TestAutoSwitchDecision::MissingRepository(_)
-    ));
+        TestAutoSwitchDecision::NoMatch
+    );
 
     config.settings.auto_switch = false;
     assert_eq!(

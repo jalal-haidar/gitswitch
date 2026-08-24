@@ -35,7 +35,7 @@ Any developer who uses **2+ Git identities** on the same machine (e.g., personal
 **GitSwitch** is a **dedicated, cross-platform, lightweight** identity management tool — not a full Git client. It focuses exclusively on making multi-account Git setups painless with:
 
 - Visual profile management (name, email, SSH keys, GPG keys, signing preferences)
-- Automatic profile switching based on directory rules
+- Repo-local profile enforcement based on relevant filesystem activity beneath directory rules
 - System tray for instant switching
 - Eventually, a VS Code extension for workspace-level control
 
@@ -102,7 +102,7 @@ Any developer who uses **2+ Git identities** on the same machine (e.g., personal
 - **Git Conditional Includes** — Auto-generate `[includeIf]` blocks in `.gitconfig`
 - **System Tray** — Quick-switch profiles from the system tray icon
 - **Profile Status in Tray** — Show active profile name/color in tray tooltip
-- **Native Notifications** — Notify when profile auto-switches based on directory rules
+- **Native Notifications** — Notify when directory activity applies a profile to a repository
 
 ### Phase 4: VS Code Extension
 
@@ -131,8 +131,8 @@ Any developer who uses **2+ Git identities** on the same machine (e.g., personal
 │  │ System Tray│◄─┼─►│  manage keys)      │  │
 │  │ Integration│  │  ├────────────────────┤  │
 │  └────────────┘  │  │ Directory Watcher  │  │
-│                  │  │ (auto-switch based │  │
-│                  │  │  on CWD rules)     │  │
+│                  │  │ (repo-local apply  │  │
+│                  │  │  on file activity) │  │
 │                  │  ├────────────────────┤  │
 │                  │  │ Config Store       │  │
 │                  │  │ (profiles.json)    │  │
@@ -148,7 +148,7 @@ Any developer who uses **2+ Git identities** on the same machine (e.g., personal
 
 1. **User creates a profile** → React sends command via Tauri IPC → Rust writes to `profiles.json`
 2. **User switches profile** → Rust updates `~/.gitconfig` `[user]` section → Sends notification
-3. **Directory rule triggers** → Rust file watcher detects CWD change → auto-switches → notifies frontend
+3. **Directory rule triggers** → Rust watcher detects relevant filesystem activity beneath a rule → resolves the affected Git repository → transactionally applies repo-local config → notifies frontend. Changing terminal directories alone does not trigger the watcher.
 4. **System tray click** → Native menu shows profiles → Rust handles switch → updates frontend state
 
 ### Config File Location

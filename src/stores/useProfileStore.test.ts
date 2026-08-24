@@ -16,6 +16,7 @@ describe("useProfileStore invoke payloads", () => {
     useProfileStore.setState({
       lastRepoActivity: null,
       globalActiveProfileId: null,
+      watcherLifecycle: null,
     });
   });
 
@@ -29,6 +30,7 @@ describe("useProfileStore invoke payloads", () => {
     };
     invokeMock.mockResolvedValue(event);
 
+    useProfileStore.setState({ globalActiveProfileId: "global-profile" });
     const result = await useProfileStore
       .getState()
       .applyProfileToRepo("profile-1", "C:\\repo");
@@ -39,6 +41,35 @@ describe("useProfileStore invoke payloads", () => {
     });
     expect(result).toEqual(event);
     expect(useProfileStore.getState().lastRepoActivity).toEqual(event);
+    expect(useProfileStore.getState().globalActiveProfileId).toBe(
+      "global-profile",
+    );
+  });
+
+  it("tracks watcher lifecycle independently from profile state", () => {
+    useProfileStore.setState({ globalActiveProfileId: "global-profile" });
+
+    useProfileStore.getState().setWatcherLifecycle({
+      state: "restarting",
+      message: "watcher failed",
+      retryInMs: 2_000,
+    });
+    expect(useProfileStore.getState().watcherLifecycle).toEqual({
+      state: "restarting",
+      message: "watcher failed",
+      retryInMs: 2_000,
+    });
+    expect(useProfileStore.getState().globalActiveProfileId).toBe(
+      "global-profile",
+    );
+
+    useProfileStore.getState().setWatcherLifecycle({
+      state: "recovered",
+      message: "watcher recovered",
+    });
+    expect(useProfileStore.getState().watcherLifecycle?.state).toBe(
+      "recovered",
+    );
   });
 
   it("uses maxDepth for scan_repos", async () => {

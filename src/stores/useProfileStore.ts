@@ -20,8 +20,27 @@ export interface DirectoryRule {
   id: string;
   path: string;
   profileId: string;
-  /** Epoch-ms timestamp of the last auto-switch that fired for this rule */
+  /** Epoch-ms timestamp of the last successful automatic repo-local apply. */
   lastTriggeredAt?: number;
+}
+
+export type WatcherLifecycleState =
+  | "degraded"
+  | "restarting"
+  | "recovered"
+  | "stopped";
+
+export interface WatcherLifecycleEvent {
+  state: WatcherLifecycleState;
+  message: string;
+  retryInMs?: number;
+}
+
+export interface AutoSwitchFailureEvent {
+  ruleId: string;
+  profileId: string;
+  repositoryPath: string;
+  message: string;
 }
 
 export interface ScannedRepo {
@@ -61,6 +80,7 @@ interface ProfileState {
   directoryRules: DirectoryRule[];
   autoSwitchEnabled: boolean;
   autoSwitchLoading: boolean;
+  watcherLifecycle: WatcherLifecycleEvent | null;
   lastRepoActivity: RepoApplyEvent | null;
   globalActiveProfileId: string | null;
   hasGlobalSnapshot: boolean;
@@ -85,6 +105,7 @@ interface ProfileState {
   detectIdentities: (directory?: string) => Promise<void>;
   fetchAutoSwitchSetting: () => Promise<void>;
   setAutoSwitchEnabled: (enabled: boolean) => Promise<void>;
+  setWatcherLifecycle: (event: WatcherLifecycleEvent) => void;
   fetchLastRepoActivity: () => Promise<void>;
   setLastRepoActivity: (event: RepoApplyEvent) => void;
   fetchDirectoryRules: () => Promise<void>;
@@ -108,6 +129,7 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
   directoryRules: [],
   autoSwitchEnabled: true,
   autoSwitchLoading: false,
+  watcherLifecycle: null,
   lastRepoActivity: null,
   globalActiveProfileId: null,
   hasGlobalSnapshot: false,
@@ -158,6 +180,8 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
       // Activity status should not break the rest of the UI.
     }
   },
+
+  setWatcherLifecycle: (watcherLifecycle) => set({ watcherLifecycle }),
 
   setLastRepoActivity: (lastRepoActivity) => set({ lastRepoActivity }),
 

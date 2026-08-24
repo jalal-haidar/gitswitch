@@ -3,6 +3,14 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Changed
+
+- Directory rules are now described and implemented as deterministic repo-local identity enforcement on relevant filesystem activity. Terminal navigation alone does not trigger rules.
+- Watcher matching now canonicalizes paths, selects one stable longest-root target, ignores common build noise, deduplicates overlapping watch roots, and debounces independently by rule and repository.
+- Watcher lifecycle reporting now distinguishes degraded, restarting, recovered, and stopped states so the UI reflects automatic recovery accurately.
+
 ## [0.2.7] - 2026-04-02
 
 ### Added

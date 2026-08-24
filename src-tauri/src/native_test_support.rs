@@ -11,7 +11,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, Result};
 
-use crate::auto_switch::{self, AutoSwitchDecision, ResolvedRule};
+use crate::auto_switch::{self, AutoSwitchDecision, DebounceKey, ResolvedRule};
 use crate::config::{
     snapshots,
     store::{self, CredentialStore},
@@ -439,7 +439,6 @@ pub enum TestAutoSwitchDecision {
     NoMatch,
     Debounced,
     Disabled,
-    MissingRepository(PathBuf),
     AlreadyApplied(PathBuf),
     Apply {
         rule_id: String,
@@ -464,28 +463,29 @@ pub fn decide_auto_switch(
             rule_id: rule.id.clone(),
         })
         .collect();
-    let Some((rule, matched_path)) = auto_switch::select_best_rule(event_paths, &resolved) else {
+    let Some(target) = auto_switch::select_best_target(event_paths, &resolved) else {
         return TestAutoSwitchDecision::NoMatch;
     };
 
     let now = Instant::now();
     let mut debounce = HashMap::new();
+    let debounce_key = DebounceKey {
+        rule_id: target.rule_id.clone(),
+        repository_path: target.repository_path.clone(),
+    };
     if let Some(elapsed) = previous_elapsed {
-        debounce.insert(rule.rule_id.clone(), now - elapsed);
+        debounce.insert(debounce_key.clone(), now - elapsed);
     }
-    if auto_switch::update_debounce(&mut debounce, &rule.rule_id, now) {
+    if auto_switch::update_debounce(&mut debounce, debounce_key, now) {
         return TestAutoSwitchDecision::Debounced;
     }
 
-    match auto_switch::evaluate_match(config, rule, &matched_path, |repo, key| {
+    match auto_switch::evaluate_target(config, &target, |repo, key| {
         git::read_value(&sandbox.executor, &GitScope::Local(repo.to_path_buf()), key)
             .ok()
             .flatten()
     }) {
         AutoSwitchDecision::Disabled => TestAutoSwitchDecision::Disabled,
-        AutoSwitchDecision::MissingRepository { path } => {
-            TestAutoSwitchDecision::MissingRepository(path)
-        }
         AutoSwitchDecision::AlreadyApplied { repo } => TestAutoSwitchDecision::AlreadyApplied(repo),
         AutoSwitchDecision::Apply {
             rule_id,
