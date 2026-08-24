@@ -31,14 +31,18 @@ export interface ScannedRepo {
   userEmail?: string;
   remoteUrl?: string;
   remoteService?: string;
-  matchedProfileId?: string;
+  appliedProfileId?: string;
   /** Repo-local core.sshCommand, if configured */
   sshCommand?: string;
 }
 
-export interface AutoSwitchEvent {
+export type RepoApplySource = "manual" | "auto";
+
+export interface RepoApplyEvent {
   profileId: string;
-  path: string;
+  profileLabel: string;
+  repositoryPath: string;
+  source: RepoApplySource;
   occurredAtEpochMs: number;
 }
 
@@ -49,6 +53,7 @@ export interface RepoLocalConfig {
   userSigningkey?: string;
   commitGpgsign?: string;
   coreSshCommand?: string;
+  appliedProfileId?: string;
 }
 
 interface ProfileState {
@@ -56,8 +61,8 @@ interface ProfileState {
   directoryRules: DirectoryRule[];
   autoSwitchEnabled: boolean;
   autoSwitchLoading: boolean;
-  lastAutoSwitchEvent: AutoSwitchEvent | null;
-  activeProfileId: string | null;
+  lastRepoActivity: RepoApplyEvent | null;
+  globalActiveProfileId: string | null;
   hasGlobalSnapshot: boolean;
   loading: boolean;
   rulesLoading: boolean;
@@ -80,12 +85,16 @@ interface ProfileState {
   detectIdentities: (directory?: string) => Promise<void>;
   fetchAutoSwitchSetting: () => Promise<void>;
   setAutoSwitchEnabled: (enabled: boolean) => Promise<void>;
-  fetchLastAutoSwitchEvent: () => Promise<void>;
+  fetchLastRepoActivity: () => Promise<void>;
+  setLastRepoActivity: (event: RepoApplyEvent) => void;
   fetchDirectoryRules: () => Promise<void>;
   addDirectoryRule: (rule: Omit<DirectoryRule, "id">) => Promise<DirectoryRule>;
   updateDirectoryRule: (rule: DirectoryRule) => Promise<void>;
   deleteDirectoryRule: (id: string) => Promise<void>;
-  applyProfileToRepo: (profileId: string, repoPath: string) => Promise<void>;
+  applyProfileToRepo: (
+    profileId: string,
+    repoPath: string,
+  ) => Promise<RepoApplyEvent>;
   getTheme: () => Promise<string>;
   setTheme: (theme: string) => Promise<void>;
   scanRepos: (root: string, maxDepth?: number) => Promise<ScannedRepo[]>;
@@ -99,8 +108,8 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
   directoryRules: [],
   autoSwitchEnabled: true,
   autoSwitchLoading: false,
-  lastAutoSwitchEvent: null,
-  activeProfileId: null,
+  lastRepoActivity: null,
+  globalActiveProfileId: null,
   hasGlobalSnapshot: false,
   loading: false,
   rulesLoading: false,
@@ -139,26 +148,34 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
     }
   },
 
-  fetchLastAutoSwitchEvent: async () => {
+  fetchLastRepoActivity: async () => {
     try {
-      const lastAutoSwitchEvent = await invoke<AutoSwitchEvent | null>(
-        "get_last_auto_switch_event",
+      const lastRepoActivity = await invoke<RepoApplyEvent | null>(
+        "get_last_repo_activity",
       );
-      set({ lastAutoSwitchEvent });
+      set({ lastRepoActivity });
     } catch {
-      // runtime status should not break the rest of the UI
+      // Activity status should not break the rest of the UI.
     }
   },
+
+  setLastRepoActivity: (lastRepoActivity) => set({ lastRepoActivity }),
 
   fetchProfiles: async () => {
     set({ loading: true, error: null });
     try {
-      const [profiles, activeProfileId, hasGlobalSnapshot] = await Promise.all([
+      const [profiles, globalActiveProfileId, hasGlobalSnapshot] =
+        await Promise.all([
         invoke<GitProfile[]>("get_profiles"),
-        invoke<string | null>("get_active_profile_id"),
+        invoke<string | null>("get_global_active_profile_id"),
         invoke<boolean>("has_global_snapshot"),
       ]);
-      set({ profiles, activeProfileId, hasGlobalSnapshot, loading: false });
+      set({
+        profiles,
+        globalActiveProfileId,
+        hasGlobalSnapshot,
+        loading: false,
+      });
     } catch (e) {
       set({ error: friendlyErrorMessage(e), loading: false });
     }
@@ -318,10 +335,12 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
   },
 
   applyProfileToRepo: async (profileId, repoPath) => {
-    await invoke("apply_profile_to_repo", {
+    const event = await invoke<RepoApplyEvent>("apply_profile_to_repo", {
       id: profileId,
       repoPath,
     });
+    set({ lastRepoActivity: event });
+    return event;
   },
 
   getTheme: async () => {

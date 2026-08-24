@@ -1,15 +1,16 @@
 use std::io::Write;
 use std::path::Path;
 use std::process::Command;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::git::{self, no_window, GitScope, ProcessGitExecutor};
 use serde::{Deserialize, Serialize};
-use tauri::AppHandle;
+use tauri::{AppHandle, Emitter};
 use uuid::Uuid;
 
 use crate::config::{snapshots, store};
 use crate::errors::BackendError;
-use crate::models::GitProfile;
+use crate::models::{GitProfile, RepoApplyEvent, RepoApplySource};
 
 // Server-side validation/sanitization helpers
 fn sanitize_string(s: &str, max_len: usize) -> String {
@@ -145,10 +146,26 @@ pub fn get_profiles(app: AppHandle) -> Result<Vec<GitProfile>, String> {
     Ok(config.profiles)
 }
 
+pub(crate) fn verified_global_profile(app: &AppHandle) -> Option<GitProfile> {
+    let config = store::load_config(app).ok()?;
+    let snapshot = git::read_snapshot(&ProcessGitExecutor::default(), &GitScope::Global).ok()?;
+    git::unique_matching_profile(&config.profiles, &snapshot).cloned()
+}
+
 #[tauri::command]
-pub fn get_active_profile_id(app: AppHandle) -> Result<Option<String>, String> {
-    let config = store::load_config(&app).map_err(|e| e.to_string())?;
-    Ok(config.active_profile_id)
+pub fn get_global_active_profile_id(app: AppHandle) -> Result<Option<String>, String> {
+    Ok(verified_global_profile(&app).map(|profile| profile.id))
+}
+
+pub(crate) fn migrate_legacy_active_state(app: &AppHandle) -> Result<(), String> {
+    let config = store::load_config(app).map_err(|error| error.to_string())?;
+    if config.legacy_active_profile_id.is_none() {
+        return Ok(());
+    }
+    store::update_config(app, |config| {
+        config.legacy_active_profile_id = None;
+        Ok(())
+    })
 }
 
 #[tauri::command]
@@ -168,10 +185,6 @@ pub fn add_profile(app: AppHandle, mut profile: GitProfile) -> Result<GitProfile
             for existing_profile in &mut config.profiles {
                 existing_profile.is_default = false;
             }
-        }
-
-        if config.active_profile_id.is_none() {
-            config.active_profile_id = Some(profile.id.clone());
         }
 
         config.profiles.push(profile.clone());
@@ -237,9 +250,6 @@ pub fn delete_profile(app: AppHandle, id: String) -> Result<(), String> {
         if config.profiles.iter().all(|p| !p.is_default) && !config.profiles.is_empty() {
             config.profiles[0].is_default = true;
         }
-        if config.active_profile_id.as_deref() == Some(id.as_str()) {
-            config.active_profile_id = config.profiles.first().map(|p| p.id.clone());
-        }
         Ok(())
     })?;
     crate::tray::refresh_tray(&app);
@@ -272,26 +282,18 @@ pub fn switch_profile_globally(app: AppHandle, id: String) -> Result<(), String>
         ));
     }
 
-    if let Err(operation_error) = store::update_config(&app, |config| {
-        if !config.profiles.iter().any(|profile| profile.id == id) {
-            return Err(format!("Profile not found: {id}"));
-        }
-        config.active_profile_id = Some(id.clone());
-        Ok(())
-    }) {
-        let rollback = collect_rollback_failures([
-            git::rollback_to_snapshot(&executor, &scope, &baseline),
-            snapshots::swap_global(&app, previous_snapshot)
-                .err()
-                .map(|error| format!("snapshot rollback failed: {error}")),
-        ]);
-        return Err(BackendError::git_transaction("apply", operation_error, rollback).to_string());
-    }
     crate::tray::refresh_tray(&app);
+    let _ = app.emit("profiles-changed", ());
     Ok(())
 }
 
-pub fn switch_profile_for_repo(app: AppHandle, id: String, repo_path: &Path) -> Result<(), String> {
+pub fn switch_profile_for_repo(
+    app: AppHandle,
+    id: String,
+    repo_path: &Path,
+    source: RepoApplySource,
+    rule_id: Option<&str>,
+) -> Result<RepoApplyEvent, String> {
     let _transaction = git::transaction_guard();
     let config = store::load_config(&app).map_err(|e| e.to_string())?;
     let profile = config
@@ -316,11 +318,34 @@ pub fn switch_profile_for_repo(app: AppHandle, id: String, repo_path: &Path) -> 
         ));
     }
 
+    let occurred_at_epoch_ms = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_millis() as u64)
+        .unwrap_or(0);
+    let canonical_repo =
+        std::fs::canonicalize(repo_path).unwrap_or_else(|_| repo_path.to_path_buf());
+    let event = RepoApplyEvent {
+        profile_id: profile.id.clone(),
+        profile_label: profile.label.clone(),
+        repository_path: canonical_repo.to_string_lossy().into_owned(),
+        source,
+        occurred_at_epoch_ms,
+    };
+
     if let Err(operation_error) = store::update_config(&app, |config| {
         if !config.profiles.iter().any(|profile| profile.id == id) {
             return Err(format!("Profile not found: {id}"));
         }
-        config.active_profile_id = Some(id.clone());
+        config.last_repo_activity = Some(event.clone());
+        if let Some(rule_id) = rule_id {
+            if let Some(rule) = config
+                .directory_rules
+                .iter_mut()
+                .find(|rule| rule.id == rule_id)
+            {
+                rule.last_triggered_at = Some(occurred_at_epoch_ms);
+            }
+        }
         Ok(())
     }) {
         let rollback = collect_rollback_failures([
@@ -331,8 +356,7 @@ pub fn switch_profile_for_repo(app: AppHandle, id: String, repo_path: &Path) -> 
         ]);
         return Err(BackendError::git_transaction("apply", operation_error, rollback).to_string());
     }
-    crate::tray::refresh_tray(&app);
-    Ok(())
+    Ok(event)
 }
 
 fn collect_rollback_failures<const N: usize>(failures: [Option<String>; N]) -> Option<String> {
@@ -353,19 +377,6 @@ fn compensate_snapshot_failure(
         .to_string(),
         None => operation_error,
     }
-}
-
-#[tauri::command]
-pub fn set_active_profile(app: AppHandle, id: String) -> Result<(), String> {
-    store::update_config(&app, |config| {
-        if !config.profiles.iter().any(|profile| profile.id == id) {
-            return Err(format!("Profile not found: {id}"));
-        }
-        config.active_profile_id = Some(id.clone());
-        Ok(())
-    })?;
-    crate::tray::refresh_tray(&app);
-    Ok(())
 }
 
 #[tauri::command]
@@ -416,6 +427,8 @@ pub fn apply_identity(
             snapshots::swap_global(&app, previous_snapshot).err(),
         ));
     }
+    crate::tray::refresh_tray(&app);
+    let _ = app.emit("profiles-changed", ());
     Ok(())
 }
 
@@ -511,6 +524,13 @@ pub fn has_global_snapshot(app: AppHandle) -> Result<bool, String> {
 }
 
 #[tauri::command]
+pub fn get_last_repo_activity(app: AppHandle) -> Result<Option<RepoApplyEvent>, String> {
+    Ok(store::load_config(&app)
+        .map_err(|error| error.to_string())?
+        .last_repo_activity)
+}
+
+#[tauri::command]
 pub fn restore_global_snapshot(app: AppHandle) -> Result<(), String> {
     let _transaction = git::transaction_guard();
     let saved = snapshots::global(&app)?
@@ -521,34 +541,15 @@ pub fn restore_global_snapshot(app: AppHandle) -> Result<(), String> {
     let current = git::read_snapshot(&executor, &scope)?;
     git::apply_snapshot_transaction(&executor, &scope, "restore", &saved, &current)?;
 
-    let previous_active =
-        match store::update_config(&app, |config| Ok(config.active_profile_id.take())) {
-            Ok(previous) => previous,
-            Err(operation_error) => {
-                let rollback = git::rollback_to_snapshot(&executor, &scope, &current);
-                return Err(
-                    BackendError::git_transaction("restore", operation_error, rollback).to_string(),
-                );
-            }
-        };
-
     if let Err(operation_error) = snapshots::swap_global(&app, None) {
-        let state_rollback = store::update_config(&app, |config| {
-            config.active_profile_id = previous_active.clone();
-            Ok(())
-        })
-        .err()
-        .map(|error| format!("active profile rollback failed: {error}"));
-        let rollback = collect_rollback_failures([
-            git::rollback_to_snapshot(&executor, &scope, &current),
-            state_rollback,
-        ]);
+        let rollback = git::rollback_to_snapshot(&executor, &scope, &current);
         return Err(
             BackendError::git_transaction("restore", operation_error, rollback).to_string(),
         );
     }
 
     crate::tray::refresh_tray(&app);
+    let _ = app.emit("profiles-changed", ());
     Ok(())
 }
 
@@ -595,33 +596,39 @@ pub struct RepoLocalConfig {
     pub user_signingkey: Option<String>,
     pub commit_gpgsign: Option<String>,
     pub core_ssh_command: Option<String>,
+    pub applied_profile_id: Option<String>,
 }
 
 /// Tauri command: read the local git config of a repo and return the current values.
 /// Used by the frontend to prove a profile switch actually landed in `.git/config`.
 #[tauri::command]
-pub fn get_repo_local_config(
-    _app: AppHandle,
-    repo_path: String,
-) -> Result<RepoLocalConfig, String> {
+pub fn get_repo_local_config(app: AppHandle, repo_path: String) -> Result<RepoLocalConfig, String> {
     let path = Path::new(&repo_path);
     let git_root =
         find_git_root(path).ok_or_else(|| format!("Not a git repository: {}", repo_path))?;
 
     let snapshot = git::read_snapshot(&ProcessGitExecutor::default(), &GitScope::Local(git_root))?;
+    let config = store::load_config(&app).map_err(|error| error.to_string())?;
+    let applied_profile_id =
+        git::unique_matching_profile(&config.profiles, &snapshot).map(|profile| profile.id.clone());
     Ok(RepoLocalConfig {
         user_name: snapshot.user_name,
         user_email: snapshot.user_email,
         user_signingkey: snapshot.user_signingkey,
         commit_gpgsign: snapshot.commit_gpgsign,
         core_ssh_command: snapshot.core_ssh_command,
+        applied_profile_id,
     })
 }
 
 /// Tauri command: apply a profile to a specific repo directory.
 /// Accepts any path inside the repo — walks up to find the .git root.
 #[tauri::command]
-pub fn apply_profile_to_repo(app: AppHandle, id: String, repo_path: String) -> Result<(), String> {
+pub fn apply_profile_to_repo(
+    app: AppHandle,
+    id: String,
+    repo_path: String,
+) -> Result<RepoApplyEvent, String> {
     let path = Path::new(&repo_path);
     if !path.exists() {
         return Err(format!("Path does not exist: {}", repo_path));
@@ -632,7 +639,9 @@ pub fn apply_profile_to_repo(app: AppHandle, id: String, repo_path: String) -> R
             repo_path
         )
     })?;
-    switch_profile_for_repo(app, id, &git_root)
+    let event = switch_profile_for_repo(app.clone(), id, &git_root, RepoApplySource::Manual, None)?;
+    let _ = app.emit("repo-profile-applied", event.clone());
+    Ok(event)
 }
 
 #[tauri::command]
@@ -664,7 +673,6 @@ pub fn restore_repo_snapshot(app: AppHandle, repo_path: String) -> Result<(), St
         );
     }
 
-    crate::tray::refresh_tray(&app);
     Ok(())
 }
 

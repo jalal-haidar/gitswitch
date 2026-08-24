@@ -1,5 +1,5 @@
 use crate::errors::BackendError;
-use crate::git::no_window;
+use crate::git::{self, no_window, GitScope, ProcessGitExecutor};
 use std::{
     env, fs,
     path::{Path, PathBuf},
@@ -288,15 +288,11 @@ pub fn scan_repos(
 
     let mut repos: Vec<ScannedRepo> = Vec::new();
     for repo_path in &repo_paths {
-        let user_name = git_config_in_dir(repo_path, &["config", "--local", "--get", "user.name"]);
-        let user_email =
-            git_config_in_dir(repo_path, &["config", "--local", "--get", "user.email"]);
+        let snapshot = git::read_snapshot(
+            &ProcessGitExecutor::default(),
+            &GitScope::Local(repo_path.clone()),
+        )?;
         let remote_url = git_config_in_dir(repo_path, &["config", "--get", "remote.origin.url"]);
-        // Capture repo-local core.sshCommand if present so UI can show real per-repo SSH command
-        let core_ssh_cmd = git_config_in_dir(
-            repo_path,
-            &["config", "--local", "--get", "core.sshCommand"],
-        );
         let remote_service = remote_url.as_deref().map(detect_remote_service);
 
         let name = repo_path
@@ -305,28 +301,18 @@ pub fn scan_repos(
             .unwrap_or("unknown")
             .to_string();
 
-        // Find the first GitSwitch profile where name+email match the repo's local identity
-        let matched_profile_id = match (&user_name, &user_email) {
-            (Some(uname), Some(uemail)) => config
-                .profiles
-                .iter()
-                .find(|p| {
-                    p.name.trim().to_lowercase() == uname.trim().to_lowercase()
-                        && p.email.trim().to_lowercase() == uemail.trim().to_lowercase()
-                })
-                .map(|p| p.id.clone()),
-            _ => None,
-        };
+        let applied_profile_id = git::unique_matching_profile(&config.profiles, &snapshot)
+            .map(|profile| profile.id.clone());
 
         repos.push(ScannedRepo {
             path: repo_path.to_string_lossy().into_owned(),
             name,
-            user_name,
-            user_email,
+            user_name: snapshot.user_name,
+            user_email: snapshot.user_email,
             remote_url,
             remote_service,
-            matched_profile_id,
-            ssh_command: core_ssh_cmd,
+            applied_profile_id,
+            ssh_command: snapshot.core_ssh_command,
         });
     }
 

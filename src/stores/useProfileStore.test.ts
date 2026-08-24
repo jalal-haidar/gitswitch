@@ -13,12 +13,23 @@ import { useProfileStore } from "./useProfileStore";
 describe("useProfileStore invoke payloads", () => {
   beforeEach(() => {
     invokeMock.mockReset();
+    useProfileStore.setState({
+      lastRepoActivity: null,
+      globalActiveProfileId: null,
+    });
   });
 
   it("uses repoPath for apply_profile_to_repo", async () => {
-    invokeMock.mockResolvedValue(undefined);
+    const event = {
+      profileId: "profile-1",
+      profileLabel: "Work",
+      repositoryPath: "C:\\repo",
+      source: "manual" as const,
+      occurredAtEpochMs: 123,
+    };
+    invokeMock.mockResolvedValue(event);
 
-    await useProfileStore
+    const result = await useProfileStore
       .getState()
       .applyProfileToRepo("profile-1", "C:\\repo");
 
@@ -26,6 +37,8 @@ describe("useProfileStore invoke payloads", () => {
       id: "profile-1",
       repoPath: "C:\\repo",
     });
+    expect(result).toEqual(event);
+    expect(useProfileStore.getState().lastRepoActivity).toEqual(event);
   });
 
   it("uses maxDepth for scan_repos", async () => {
@@ -52,7 +65,7 @@ describe("useProfileStore invoke payloads", () => {
   it("uses durable global snapshot commands and refreshes state after restore", async () => {
     invokeMock.mockImplementation(async (command: string) => {
       if (command === "get_profiles") return [];
-      if (command === "get_active_profile_id") return null;
+      if (command === "get_global_active_profile_id") return null;
       if (command === "has_global_snapshot") return false;
       return undefined;
     });

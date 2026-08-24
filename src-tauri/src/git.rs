@@ -222,28 +222,17 @@ pub(crate) fn read_snapshot(
     })
 }
 
-pub(crate) fn snapshot_for_profile(profile: &GitProfile) -> Result<GitConfigSnapshot, String> {
+pub(crate) fn expected_snapshot_for_profile(profile: &GitProfile) -> GitConfigSnapshot {
     let ssh_key_path = profile
         .ssh_key_path
         .as_deref()
         .filter(|value| !value.is_empty());
-    if let Some(path) = ssh_key_path {
-        let path = Path::new(path);
-        if !path.is_file() {
-            return Err(format!(
-                "SSH key file not found for profile '{}': {}. Edit the profile to fix the path.",
-                profile.label,
-                path.display()
-            ));
-        }
-    }
-
     let signing_key = profile
         .gpg_key_id
         .as_deref()
         .filter(|value| !value.is_empty())
         .map(ToOwned::to_owned);
-    Ok(GitConfigSnapshot {
+    GitConfigSnapshot {
         user_name: Some(profile.name.clone()),
         user_email: Some(profile.email.clone()),
         user_signingkey: signing_key.clone(),
@@ -261,7 +250,36 @@ pub(crate) fn snapshot_for_profile(profile: &GitProfile) -> Result<GitConfigSnap
                 path.replace('\\', "/")
             )
         }),
-    })
+    }
+}
+
+pub(crate) fn snapshot_for_profile(profile: &GitProfile) -> Result<GitConfigSnapshot, String> {
+    if let Some(path) = profile
+        .ssh_key_path
+        .as_deref()
+        .filter(|value| !value.is_empty())
+    {
+        let path = Path::new(path);
+        if !path.is_file() {
+            return Err(format!(
+                "SSH key file not found for profile '{}': {}. Edit the profile to fix the path.",
+                profile.label,
+                path.display()
+            ));
+        }
+    }
+    Ok(expected_snapshot_for_profile(profile))
+}
+
+pub(crate) fn unique_matching_profile<'a>(
+    profiles: &'a [GitProfile],
+    snapshot: &GitConfigSnapshot,
+) -> Option<&'a GitProfile> {
+    let mut matches = profiles
+        .iter()
+        .filter(|profile| expected_snapshot_for_profile(profile) == *snapshot);
+    let matched = matches.next()?;
+    matches.next().is_none().then_some(matched)
 }
 
 pub(crate) fn preflight(executor: &dyn GitExecutor, scope: &GitScope) -> Result<(), String> {
@@ -507,4 +525,55 @@ where
         .into_iter()
         .map(|item| item.as_ref().to_string_lossy().into_owned())
         .collect()
+}
+
+#[cfg(test)]
+mod matching_tests {
+    use super::*;
+
+    fn profile(id: &str, email: &str) -> GitProfile {
+        GitProfile {
+            id: id.to_string(),
+            label: id.to_string(),
+            name: "Alice".to_string(),
+            email: email.to_string(),
+            color: "#123456".to_string(),
+            ssh_key_path: Some("C:/Users/Alice/.ssh/id_ed25519".to_string()),
+            gpg_key_id: Some("ABC123".to_string()),
+            is_default: false,
+            remote_url: None,
+            remote_service: None,
+        }
+    }
+
+    #[test]
+    fn exact_five_field_snapshot_has_one_match() {
+        let profiles = vec![profile("work", "alice@work.test")];
+        let snapshot = expected_snapshot_for_profile(&profiles[0]);
+
+        assert_eq!(
+            unique_matching_profile(&profiles, &snapshot).map(|profile| profile.id.as_str()),
+            Some("work")
+        );
+    }
+
+    #[test]
+    fn any_field_mismatch_has_no_match() {
+        let profiles = vec![profile("work", "alice@work.test")];
+        let mut snapshot = expected_snapshot_for_profile(&profiles[0]);
+        snapshot.commit_gpgsign = Some("false".to_string());
+
+        assert!(unique_matching_profile(&profiles, &snapshot).is_none());
+    }
+
+    #[test]
+    fn duplicate_exact_profiles_are_ambiguous() {
+        let profiles = vec![
+            profile("work-a", "alice@work.test"),
+            profile("work-b", "alice@work.test"),
+        ];
+        let snapshot = expected_snapshot_for_profile(&profiles[0]);
+
+        assert!(unique_matching_profile(&profiles, &snapshot).is_none());
+    }
 }

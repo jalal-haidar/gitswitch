@@ -1,16 +1,16 @@
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::{mpsc, Mutex, OnceLock};
+use std::sync::mpsc;
 use std::thread;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant};
 
 use notify::{Config as NotifyConfig, Event, RecommendedWatcher, RecursiveMode, Watcher};
-use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 
 use crate::commands::profiles::{find_git_root, switch_profile_for_repo};
 use crate::config::store;
+use crate::models::RepoApplySource;
 
 #[derive(Clone, Debug)]
 pub(crate) struct ResolvedRule {
@@ -33,55 +33,6 @@ pub(crate) enum AutoSwitchDecision {
         profile_id: String,
         repo: PathBuf,
     },
-}
-
-#[derive(Clone, Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AutoSwitchEvent {
-    pub profile_id: String,
-    pub path: String,
-    pub occurred_at_epoch_ms: u64,
-}
-
-static LAST_EVENT: OnceLock<Mutex<Option<AutoSwitchEvent>>> = OnceLock::new();
-
-fn last_event_store() -> &'static Mutex<Option<AutoSwitchEvent>> {
-    LAST_EVENT.get_or_init(|| Mutex::new(None))
-}
-
-pub fn get_last_auto_switch_event() -> Option<AutoSwitchEvent> {
-    match last_event_store().lock() {
-        Ok(guard) => (*guard).clone(),
-        Err(poisoned) => {
-            // Recover from poisoned mutex — a panic in another thread shouldn't
-            // permanently break last-event reads.
-            eprintln!("[auto-switch] last-event mutex was poisoned, recovering");
-            (*poisoned.into_inner()).clone()
-        }
-    }
-}
-
-fn set_last_auto_switch_event(profile_id: String, path: String) {
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_millis() as u64)
-        .unwrap_or(0);
-
-    let event = Some(AutoSwitchEvent {
-        profile_id,
-        path,
-        occurred_at_epoch_ms: now,
-    });
-
-    match last_event_store().lock() {
-        Ok(mut guard) => {
-            *guard = event;
-        }
-        Err(poisoned) => {
-            eprintln!("[auto-switch] last-event mutex was poisoned, recovering for write");
-            *poisoned.into_inner() = event;
-        }
-    }
 }
 
 pub fn start_auto_switch_watcher(app: AppHandle) {
@@ -247,41 +198,19 @@ fn handle_event(
         } => (repo, profile_id),
     };
 
-    if let Err(error) = switch_profile_for_repo(app.clone(), profile_id.clone(), &git_root) {
-        eprintln!("[auto-switch] failed to switch profile: {error}");
-        let _ = app.emit("auto-switch-failed", error);
-    } else {
-        let now_ms = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_millis() as u64)
-            .unwrap_or(0);
-        // Use the git root as the canonical "affected path" so the UI shows
-        // the repo, not an internal temp file that happened to trigger the event.
-        let event_path = git_root.to_string_lossy().to_string();
-        set_last_auto_switch_event(match_rule.profile_id.clone(), event_path.clone());
-        let _ = app.emit(
-            "auto-switch-triggered",
-            AutoSwitchEvent {
-                profile_id: match_rule.profile_id.clone(),
-                path: event_path,
-                occurred_at_epoch_ms: now_ms,
-            },
-        );
-        // Stamp last_triggered_at on the directory rule that fired
-        if let Err(error) = store::update_config(app, |config| {
-            if let Some(rule) = config
-                .directory_rules
-                .iter_mut()
-                .find(|rule| rule.id == match_rule.rule_id)
-            {
-                rule.last_triggered_at = Some(now_ms);
-            }
-            Ok(())
-        }) {
-            eprintln!(
-                "[auto-switch] failed to stamp last_triggered_at for rule {}: {error}",
-                match_rule.rule_id
-            );
+    match switch_profile_for_repo(
+        app.clone(),
+        profile_id,
+        &git_root,
+        RepoApplySource::Auto,
+        Some(&match_rule.rule_id),
+    ) {
+        Err(error) => {
+            eprintln!("[auto-switch] failed to switch profile: {error}");
+            let _ = app.emit("auto-switch-failed", error);
+        }
+        Ok(event) => {
+            let _ = app.emit("repo-profile-applied", event);
         }
     }
 }
@@ -342,25 +271,17 @@ where
         };
     };
 
-    if let Some(profile) = config
-        .profiles
-        .iter()
-        .find(|profile| profile.id == rule.profile_id)
+    let snapshot = crate::models::GitConfigSnapshot {
+        user_name: read_local(&repo, "user.name"),
+        user_email: read_local(&repo, "user.email"),
+        user_signingkey: read_local(&repo, "user.signingkey"),
+        commit_gpgsign: read_local(&repo, "commit.gpgsign"),
+        core_ssh_command: read_local(&repo, "core.sshCommand"),
+    };
+    if crate::git::unique_matching_profile(&config.profiles, &snapshot)
+        .is_some_and(|profile| profile.id == rule.profile_id)
     {
-        let expected_ssh = profile.ssh_key_path.as_deref().and_then(|path| {
-            (!path.is_empty()).then(|| {
-                format!(
-                    "ssh -i \"{}\" -o IdentitiesOnly=yes",
-                    path.replace('\\', "/")
-                )
-            })
-        });
-        if read_local(&repo, "user.name").as_deref() == Some(profile.name.as_str())
-            && read_local(&repo, "user.email").as_deref() == Some(profile.email.as_str())
-            && read_local(&repo, "core.sshCommand") == expected_ssh
-        {
-            return AutoSwitchDecision::AlreadyApplied { repo };
-        }
+        return AutoSwitchDecision::AlreadyApplied { repo };
     }
 
     AutoSwitchDecision::Apply {
@@ -605,18 +526,5 @@ mod tests {
             sig_a, sig_b,
             "signature should be stable regardless of rule order"
         );
-    }
-
-    // ── last event store ─────────────────────────────────────────
-
-    #[test]
-    fn last_event_roundtrip() {
-        set_last_auto_switch_event("profile-test-001".into(), "/test/path".into());
-        let event = get_last_auto_switch_event();
-        assert!(event.is_some());
-        let event = event.unwrap();
-        assert_eq!(event.profile_id, "profile-test-001");
-        assert_eq!(event.path, "/test/path");
-        assert!(event.occurred_at_epoch_ms > 0);
     }
 }

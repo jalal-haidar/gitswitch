@@ -2,7 +2,6 @@ use tauri::AppHandle;
 use tauri_plugin_autostart::ManagerExt;
 use uuid::Uuid;
 
-use crate::auto_switch;
 use crate::config::store;
 use crate::models::DirectoryRule;
 
@@ -60,11 +59,6 @@ pub fn set_auto_switch_enabled(app: AppHandle, enabled: bool) -> Result<bool, St
         config.settings.auto_switch = enabled;
         Ok(enabled)
     })
-}
-
-#[tauri::command]
-pub fn get_last_auto_switch_event() -> Result<Option<auto_switch::AutoSwitchEvent>, String> {
-    Ok(auto_switch::get_last_auto_switch_event())
 }
 
 #[tauri::command]

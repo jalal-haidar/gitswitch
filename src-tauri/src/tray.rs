@@ -64,16 +64,16 @@ fn generate_colored_icon(color: &str) -> Option<tauri::image::Image<'static>> {
 /// Build or rebuild the tray context menu from the current config.
 pub fn build_tray_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     let config = store::load_config(app).unwrap_or_default();
-    let active_id = config.active_profile_id.as_deref().unwrap_or("");
+    let active_profile = crate::commands::profiles::verified_global_profile(app);
+    let active_id = active_profile.as_ref().map(|profile| profile.id.as_str());
 
     let menu = Menu::new(app)?;
 
     // Non-clickable header showing the active profile (or a placeholder)
-    let header_text = if let Some(p) = config.profiles.iter().find(|p| p.id == active_id) {
-        format!("Active: {}", p.label)
-    } else {
-        "No active profile".to_string()
-    };
+    let header_text = active_profile
+        .as_ref()
+        .map(|profile| format!("Global profile: {}", profile.label))
+        .unwrap_or_else(|| "No matching global profile".to_string());
     let header = MenuItem::with_id(app, "header", header_text, false, None::<&str>)?;
     menu.append(&header)?;
 
@@ -81,7 +81,7 @@ pub fn build_tray_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
 
     // One CheckMenuItem per profile — checked when it's the active one
     for profile in &config.profiles {
-        let is_active = profile.id == active_id;
+        let is_active = active_id.is_some_and(|active_id| profile.id == active_id);
         let item = CheckMenuItem::with_id(
             app,
             format!("switch-{}", profile.id),
@@ -116,20 +116,17 @@ pub fn refresh_tray(app: &AppHandle) {
         let _ = tray.set_menu(Some(menu));
     }
 
-    // Update tooltip and icon based on active profile
-    let config = store::load_config(app).unwrap_or_default();
-    let tooltip = if let Some(active_id) = &config.active_profile_id {
-        if let Some(p) = config.profiles.iter().find(|p| &p.id == active_id) {
-            // Update icon with profile color
-            if let Some(icon) = generate_colored_icon(&p.color) {
-                let _ = tray.set_icon(Some(icon));
-            }
-            format!("GitSwitch — {}", p.label)
-        } else {
-            "GitSwitch".to_string()
+    let active_profile = crate::commands::profiles::verified_global_profile(app);
+    let tooltip = if let Some(profile) = active_profile {
+        if let Some(icon) = generate_colored_icon(&profile.color) {
+            let _ = tray.set_icon(Some(icon));
         }
+        format!("GitSwitch — global: {}", profile.label)
     } else {
-        "GitSwitch".to_string()
+        if let Some(icon) = generate_colored_icon("#6B7280") {
+            let _ = tray.set_icon(Some(icon));
+        }
+        "GitSwitch — no matching global profile".to_string()
     };
     let _ = tray.set_tooltip(Some(tooltip));
 }
@@ -137,8 +134,6 @@ pub fn refresh_tray(app: &AppHandle) {
 /// Set up the system tray. Should be called once from app setup.
 pub fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
     let menu = build_tray_menu(app.handle())?;
-
-    let config = store::load_config(app.handle()).unwrap_or_default();
 
     // Compute a safe fallback icon once — avoids unwrap() panics if no default icon is set.
     // We generate a neutral grey circle rather than using default_window_icon()
@@ -149,16 +144,17 @@ pub fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
             tauri::image::Image::new(&[0, 0, 0, 0], 1, 1)
         });
 
-    // Get initial icon and tooltip from active profile
-    let (initial_icon, initial_tooltip) = if let Some(active_id) = &config.active_profile_id {
-        if let Some(p) = config.profiles.iter().find(|p| &p.id == active_id) {
-            let icon = generate_colored_icon(&p.color).unwrap_or_else(|| fallback_icon.clone());
-            (icon, format!("GitSwitch — {}", p.label))
-        } else {
-            (fallback_icon.clone(), "GitSwitch".to_string())
-        }
+    // Get initial icon and tooltip from verified global Git configuration.
+    let (initial_icon, initial_tooltip) = if let Some(profile) =
+        crate::commands::profiles::verified_global_profile(app.handle())
+    {
+        let icon = generate_colored_icon(&profile.color).unwrap_or_else(|| fallback_icon.clone());
+        (icon, format!("GitSwitch — global: {}", profile.label))
     } else {
-        (fallback_icon.clone(), "GitSwitch".to_string())
+        (
+            fallback_icon.clone(),
+            "GitSwitch — no matching global profile".to_string(),
+        )
     };
 
     TrayIconBuilder::with_id("main-tray")
@@ -193,11 +189,7 @@ fn on_menu_event(app: &AppHandle, id: &str) {
             if let Some(s) = id.strip_prefix("switch-") {
                 let profile_id = s.to_string();
                 match crate::commands::profiles::switch_profile_globally(app.clone(), profile_id) {
-                    Ok(()) => {
-                        refresh_tray(app);
-                        // Tell the frontend to re-fetch profiles so UI + title bar update
-                        let _ = app.emit("profiles-changed", ());
-                    }
+                    Ok(()) => {}
                     Err(e) => {
                         eprintln!("[tray] switch error: {e}");
                         let _ = app.emit("tray-switch-failed", e);

@@ -36,6 +36,23 @@ pub struct DirectoryRule {
     pub last_triggered_at: Option<u64>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum RepoApplySource {
+    Manual,
+    Auto,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RepoApplyEvent {
+    pub profile_id: String,
+    pub profile_label: String,
+    pub repository_path: String,
+    pub source: RepoApplySource,
+    pub occurred_at_epoch_ms: u64,
+}
+
 /// Returned by `scan_repos` — describes a discovered git repository.
 /// Never written back to profiles.json.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -48,8 +65,8 @@ pub struct ScannedRepo {
     pub remote_url: Option<String>,
     /// One of: "github", "gitlab", "bitbucket", "other", or None if no remote
     pub remote_service: Option<String>,
-    /// ID of the GitSwitch profile whose name+email matches this repo's identity
-    pub matched_profile_id: Option<String>,
+    /// ID of the single GitSwitch profile matching all five local Git fields.
+    pub applied_profile_id: Option<String>,
     /// Repo-local `core.sshCommand` if configured (optional)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ssh_command: Option<String>,
@@ -94,8 +111,11 @@ impl Default for AppSettings {
 pub struct AppConfig {
     #[serde(default)]
     pub profiles: Vec<GitProfile>,
-    #[serde(default)]
-    pub active_profile_id: Option<String>,
+    /// Read only for migration from the pre-v0.2.8 ambiguous state. Never save it again.
+    #[serde(default, rename = "activeProfileId", skip_serializing)]
+    pub(crate) legacy_active_profile_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_repo_activity: Option<RepoApplyEvent>,
     #[serde(default)]
     pub directory_rules: Vec<DirectoryRule>,
     #[serde(default)]
@@ -109,4 +129,46 @@ pub struct AppConfig {
     /// transaction state only and is never persisted.
     #[serde(skip)]
     pub(crate) keyring_baseline: KeyringBaseline,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn legacy_active_profile_is_read_but_never_written() {
+        let config: AppConfig = serde_json::from_str(
+            r#"{"activeProfileId":"legacy-profile","profiles":[],"directoryRules":[],"settings":{}}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            config.legacy_active_profile_id.as_deref(),
+            Some("legacy-profile")
+        );
+
+        let saved = serde_json::to_value(config).unwrap();
+        assert!(saved.get("activeProfileId").is_none());
+    }
+
+    #[test]
+    fn repo_activity_uses_explicit_camel_case_contract() {
+        let event = RepoApplyEvent {
+            profile_id: "work".to_string(),
+            profile_label: "Work".to_string(),
+            repository_path: "C:/code/repo".to_string(),
+            source: RepoApplySource::Auto,
+            occurred_at_epoch_ms: 42,
+        };
+
+        assert_eq!(
+            serde_json::to_value(event).unwrap(),
+            serde_json::json!({
+                "profileId": "work",
+                "profileLabel": "Work",
+                "repositoryPath": "C:/code/repo",
+                "source": "auto",
+                "occurredAtEpochMs": 42
+            })
+        );
+    }
 }

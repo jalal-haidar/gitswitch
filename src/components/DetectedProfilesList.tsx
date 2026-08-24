@@ -1,7 +1,6 @@
 import React, { useState } from "react";
 import { CheckCircle } from "lucide-react";
 import { useProfileStore, GitProfile } from "../stores/useProfileStore";
-import { invoke } from "@tauri-apps/api/core";
 import { useToast } from "./ui/useToast";
 import { normalizeBackendError } from "../utils/error";
 
@@ -10,6 +9,9 @@ export const DetectedProfilesList: React.FC = () => {
   const detectLoading = useProfileStore((s) => s.detectLoading);
   const detectError = useProfileStore((s) => s.detectError);
   const addProfile = useProfileStore((s) => s.addProfile);
+  const switchProfileGlobally = useProfileStore(
+    (s) => s.switchProfileGlobally,
+  );
   const findExistingProfile = useProfileStore((s) => s.findExistingProfile);
 
   const [importingId, setImportingId] = useState<string | null>(null);
@@ -77,12 +79,10 @@ export const DetectedProfilesList: React.FC = () => {
         throw new Error("Failed to determine profile id to activate");
       }
 
-      await invoke("set_active_profile", { id: toActivateId });
-      // refresh profiles in store
-      await useProfileStore.getState().fetchProfiles();
+      await switchProfileGlobally(toActivateId);
 
       toast.show({
-        message: `Imported and activated ${p.name}`,
+        message: `Imported and switched global Git to ${p.name}`,
         kind: "success",
       });
     } catch (e) {
@@ -100,7 +100,7 @@ export const DetectedProfilesList: React.FC = () => {
       }
 
       toast.show({
-        message: `Import & activate failed: ${info.message}`,
+        message: `Import & global switch failed: ${info.message}`,
         kind: "error",
         duration: info.hint ? 10000 : 7000,
         actions,
@@ -168,8 +168,8 @@ export const DetectedProfilesList: React.FC = () => {
                     {isImporting
                       ? "Applying…"
                       : existing
-                        ? "Set Active"
-                        : "Import + Set Active"}
+                        ? "Switch Globally"
+                        : "Import + Switch Globally"}
                   </button>
                 </div>
               </div>

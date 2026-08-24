@@ -9,7 +9,6 @@ import {
   XCircle,
   Loader2,
   Copy,
-  Clock,
 } from "lucide-react";
 import { open as openFolderPicker } from "@tauri-apps/plugin-dialog";
 import { normalizeBackendError, friendlyErrorMessage } from "../utils/error";
@@ -179,17 +178,14 @@ export const DirectoryRulesSection: React.FC = () => {
     directoryRules,
     autoSwitchEnabled,
     autoSwitchLoading,
-    lastAutoSwitchEvent,
     rulesLoading,
     fetchAutoSwitchSetting,
-    fetchLastAutoSwitchEvent,
     setAutoSwitchEnabled,
     addDirectoryRule,
     updateDirectoryRule,
     deleteDirectoryRule,
     getRepoLocalConfig,
     applyProfileToRepo,
-    fetchProfiles,
   } = useProfileStore();
 
   // Per-rule test state: ruleId → { loading, result, error }
@@ -211,20 +207,9 @@ export const DirectoryRulesSection: React.FC = () => {
   }, [fetchAutoSwitchSetting]);
 
   useEffect(() => {
-    // Fetch once on mount, then update live via the auto-switch-triggered event
-    // (replaces the old 3-second setInterval poll)
-    fetchLastAutoSwitchEvent().catch(() => undefined);
-
-    let unlistenSuccess: (() => void) | undefined;
     let unlistenFailed: (() => void) | undefined;
     const setup = async () => {
       const { listen } = await import("@tauri-apps/api/event");
-      unlistenSuccess = await listen("auto-switch-triggered", () => {
-        fetchLastAutoSwitchEvent().catch(() => undefined);
-        // Also refresh profiles so the active-profile indicator in the
-        // Dashboard reflects the new active_profile_id set by the switch.
-        fetchProfiles().catch(() => undefined);
-      });
       unlistenFailed = await listen<string>("auto-switch-failed", (event) => {
         const info = normalizeBackendError(event.payload ?? "");
         toast.show({
@@ -236,10 +221,9 @@ export const DirectoryRulesSection: React.FC = () => {
     };
     setup().catch(() => undefined);
     return () => {
-      unlistenSuccess?.();
       unlistenFailed?.();
     };
-  }, [fetchLastAutoSwitchEvent, toast]);
+  }, [toast]);
 
   const profileOptions = useMemo(
     () => profiles.map((p) => ({ id: p.id, label: p.label })),
@@ -261,19 +245,6 @@ export const DirectoryRulesSection: React.FC = () => {
     () => directoryRules.filter((rule) => rule.path.trim() !== "").length,
     [directoryRules],
   );
-
-  const lastEventProfileLabel = useMemo(() => {
-    if (!lastAutoSwitchEvent) return "Unknown profile";
-    return (
-      profiles.find((profile) => profile.id === lastAutoSwitchEvent.profileId)
-        ?.label ?? "Unknown profile"
-    );
-  }, [lastAutoSwitchEvent, profiles]);
-
-  const lastEventTime = useMemo(() => {
-    if (!lastAutoSwitchEvent?.occurredAtEpochMs) return null;
-    return new Date(lastAutoSwitchEvent.occurredAtEpochMs).toLocaleString();
-  }, [lastAutoSwitchEvent]);
 
   const handleToggleAutoSwitch = async (
     event: React.ChangeEvent<HTMLInputElement>,
@@ -390,24 +361,6 @@ export const DirectoryRulesSection: React.FC = () => {
         Rules write local git config (.git/config), which overrides global
         config in matched repositories.
       </div>
-
-      {lastAutoSwitchEvent && (
-        <div
-          className="glass-panel rules-last-event"
-          role="status"
-          aria-live="polite"
-        >
-          <Clock size={16} className="last-event-icon" />
-          <div>
-            <strong>Last auto-switch:</strong> {lastEventProfileLabel}
-            <br />
-            <span className="muted">
-              {lastAutoSwitchEvent.path}
-              {lastEventTime ? ` • ${lastEventTime}` : ""}
-            </span>
-          </div>
-        </div>
-      )}
 
       {showCreate && (
         <RuleEditor

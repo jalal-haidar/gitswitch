@@ -21,13 +21,16 @@ pub fn run() {
             Some(vec!["--minimized"]),
         ))
         .setup(|app| {
-            auto_switch::start_auto_switch_watcher(app.handle().clone());
+            if let Err(error) = commands::profiles::migrate_legacy_active_state(app.handle()) {
+                eprintln!("[migration] failed to remove legacy active profile state: {error}");
+            }
             tray::setup_tray(app)?;
+            auto_switch::start_auto_switch_watcher(app.handle().clone());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             commands::profiles::get_profiles,
-            commands::profiles::get_active_profile_id,
+            commands::profiles::get_global_active_profile_id,
             commands::profiles::add_profile,
             commands::profiles::update_profile,
             commands::profiles::delete_profile,
@@ -38,7 +41,7 @@ pub fn run() {
             commands::profiles::restore_global_snapshot,
             commands::profiles::discard_global_snapshot,
             commands::profiles::apply_identity,
-            commands::profiles::set_active_profile,
+            commands::profiles::get_last_repo_activity,
             commands::detect::detect_identities,
             commands::rules::get_auto_switch_enabled,
             commands::rules::get_store_sensitive_in_keyring,
@@ -46,7 +49,6 @@ pub fn run() {
             commands::rules::get_start_with_system,
             commands::rules::set_start_with_system,
             commands::rules::set_auto_switch_enabled,
-            commands::rules::get_last_auto_switch_event,
             commands::rules::get_directory_rules,
             commands::rules::add_directory_rule,
             commands::rules::update_directory_rule,

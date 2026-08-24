@@ -94,7 +94,7 @@ export const ProfileCard: React.FC<ProfileCardProps> = React.memo(
           </div>
           {isActive && (
             <div className="active-badge" role="status" aria-live="polite">
-              <CheckCircle2 size={16} /> Active
+              <CheckCircle2 size={16} /> Global
             </div>
           )}
         </div>
@@ -107,7 +107,7 @@ export const ProfileCard: React.FC<ProfileCardProps> = React.memo(
                 onClick={() => setConfirmOpen(true)}
                 disabled={loading}
               >
-                Switch to Profile
+                Switch Globally
               </button>
 
               <ConfirmModal

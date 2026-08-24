@@ -15,6 +15,7 @@ import Settings from "./Settings";
 
 import {
   GitProfile,
+  RepoApplyEvent,
   RepoLocalConfig,
   ScannedRepo,
   useProfileStore,
@@ -39,10 +40,12 @@ const SCAN_PAGE_SIZE = 20;
 export const Dashboard: React.FC = () => {
   const {
     profiles,
-    activeProfileId,
+    globalActiveProfileId,
+    lastRepoActivity,
     hasGlobalSnapshot,
     loading,
     fetchProfiles,
+    fetchLastRepoActivity,
     fetchDirectoryRules,
     addProfile,
     updateProfile,
@@ -100,19 +103,22 @@ export const Dashboard: React.FC = () => {
 
   useEffect(() => {
     fetchProfiles();
+    fetchLastRepoActivity();
     fetchDirectoryRules();
-  }, [fetchDirectoryRules, fetchProfiles]);
+  }, [fetchDirectoryRules, fetchLastRepoActivity, fetchProfiles]);
 
   // Update window title to reflect active profile
   useEffect(() => {
-    const activeProfile = profiles.find((p) => p.id === activeProfileId);
-    const titleSuffix = activeProfile ? ` — ${activeProfile.label}` : "";
+    const activeProfile = profiles.find(
+      (p) => p.id === globalActiveProfileId,
+    );
+    const titleSuffix = activeProfile ? ` — Global: ${activeProfile.label}` : "";
     getCurrentWindow()
       .setTitle(`GitSwitch${titleSuffix}`)
       .catch(() => {
         /* not in Tauri context */
       });
-  }, [activeProfileId, profiles]);
+  }, [globalActiveProfileId, profiles]);
 
   // Keep a ref so the auto-switch listener always has the latest toast without re-subscribing
   const toastRef = useRef(toast);
@@ -177,26 +183,47 @@ export const Dashboard: React.FC = () => {
     let unlisten: (() => void) | undefined;
     const setup = async () => {
       const { listen } = await import("@tauri-apps/api/event");
-      unlisten = await listen<{ profileId: string; path: string }>(
-        "auto-switch-triggered",
+      unlisten = await listen<RepoApplyEvent>(
+        "repo-profile-applied",
         (event) => {
           const state = useProfileStore.getState();
-          const profile = state.profiles.find(
-            (p) => p.id === event.payload.profileId,
-          );
-          const label = profile?.label ?? event.payload.profileId;
-          // Trim path to last 2 segments for readability
-          const segments = event.payload.path
+          state.setLastRepoActivity(event.payload);
+          const eventPath = event.payload.repositoryPath
             .replace(/\\/g, "/")
-            .split("/")
-            .filter(Boolean);
-          const shortPath = segments.slice(-2).join("/");
-          toastRef.current.show({
-            message: `Auto-switched to \"${label}\" (…/${shortPath})`,
-            kind: "success",
-            duration: 4500,
-          });
-          void state.fetchProfiles();
+            .toLowerCase();
+          setScannedRepos((repos) =>
+            repos.map((repo) =>
+              repo.path.replace(/\\/g, "/").toLowerCase() === eventPath
+                ? { ...repo, appliedProfileId: event.payload.profileId }
+                : repo,
+            ),
+          );
+          void state
+            .getRepoLocalConfig(event.payload.repositoryPath)
+            .then((config) => {
+              setSelectedRepoConfigs((current) =>
+                current[event.payload.repositoryPath]
+                  ? {
+                      ...current,
+                      [event.payload.repositoryPath]: config,
+                    }
+                  : current,
+              );
+            })
+            .catch(() => undefined);
+
+          if (event.payload.source === "auto") {
+            const segments = event.payload.repositoryPath
+              .replace(/\\/g, "/")
+              .split("/")
+              .filter(Boolean);
+            const shortPath = segments.slice(-2).join("/");
+            toastRef.current.show({
+              message: `Auto-applied \"${event.payload.profileLabel}\" (…/${shortPath})`,
+              kind: "success",
+              duration: 4500,
+            });
+          }
         },
       );
     };
@@ -281,8 +308,10 @@ export const Dashboard: React.FC = () => {
           target.tagName === "INPUT" ||
           target.tagName === "TEXTAREA" ||
           target.isContentEditable;
-        if (!isInInput && activeProfileId) {
-          const activeProfile = profiles.find((p) => p.id === activeProfileId);
+        if (!isInInput && globalActiveProfileId) {
+          const activeProfile = profiles.find(
+            (p) => p.id === globalActiveProfileId,
+          );
           if (activeProfile) {
             e.preventDefault();
             const {
@@ -325,7 +354,7 @@ export const Dashboard: React.FC = () => {
     editingId,
     showShortcuts,
     profiles.length,
-    activeProfileId,
+    globalActiveProfileId,
     profiles,
     addProfile,
     toast,
@@ -492,10 +521,10 @@ export const Dashboard: React.FC = () => {
       setSelectedRepoPaths({});
       setSelectedRepoConfigs({});
       setSelectedConfigsError(null);
-      // Pre-select matched profile (or first profile) for each row
+      // Pre-select the verified applied profile (or first profile) for each row.
       const targets: Record<string, string> = {};
       for (const r of results) {
-        targets[r.path] = r.matchedProfileId ?? profiles[0]?.id ?? "";
+        targets[r.path] = r.appliedProfileId ?? profiles[0]?.id ?? "";
       }
       setApplyTargets(targets);
       if (results.length === 0) {
@@ -519,7 +548,7 @@ export const Dashboard: React.FC = () => {
     if (!profileId) return;
     setApplyingPath(repoPath);
     try {
-      await applyProfileToRepo(profileId, repoPath);
+      const event = await applyProfileToRepo(profileId, repoPath);
       const label =
         profiles.find((p) => p.id === profileId)?.label ?? profileId;
       const repoName =
@@ -533,6 +562,13 @@ export const Dashboard: React.FC = () => {
         ...previous,
         [repoPath]: true,
       }));
+      setScannedRepos((repos) =>
+        repos.map((repo) =>
+          repo.path === repoPath
+            ? { ...repo, appliedProfileId: event.profileId }
+            : repo,
+        ),
+      );
       void refreshSelectedRepoConfig(repoPath);
     } catch (e) {
       toast.show({
@@ -678,6 +714,34 @@ export const Dashboard: React.FC = () => {
         <h1 className="text-gradient">GitSwitch</h1>
         <p>Manage your Git identities with ease.</p>
       </header>
+
+      <aside className="glass-panel identity-status-panel" aria-live="polite">
+        <div>
+          <span className="muted">Verified global Git profile</span>
+          <strong>
+            {profiles.find((profile) => profile.id === globalActiveProfileId)
+              ?.label ?? "No exact profile match"}
+          </strong>
+        </div>
+        <div>
+          <span className="muted">Latest repository activity</span>
+          {lastRepoActivity ? (
+            <strong>
+              {lastRepoActivity.profileLabel} · {lastRepoActivity.source} ·{" "}
+              {new Date(
+                lastRepoActivity.occurredAtEpochMs,
+              ).toLocaleString()}
+            </strong>
+          ) : (
+            <strong>No repository profile applied yet</strong>
+          )}
+          {lastRepoActivity && (
+            <span className="muted" title={lastRepoActivity.repositoryPath}>
+              {lastRepoActivity.repositoryPath}
+            </span>
+          )}
+        </div>
+      </aside>
 
       {hasGlobalSnapshot && (
         <aside className="glass-panel global-recovery-banner" role="status">
@@ -837,7 +901,7 @@ export const Dashboard: React.FC = () => {
                 <div>
                   <strong>Switch to it</strong>
                   <span>
-                    Hit <strong>Switch to Profile</strong> — GitSwitch writes
+                    Hit <strong>Switch Globally</strong> — GitSwitch writes
                     your identity to global Git config instantly.
                   </span>
                 </div>
@@ -888,7 +952,7 @@ export const Dashboard: React.FC = () => {
               <React.Fragment key={profile.id}>
                 <ProfileCard
                   profile={profile}
-                  isActive={activeProfileId === profile.id}
+                  isActive={globalActiveProfileId === profile.id}
                   onEdit={(selected: GitProfile) => {
                     setShowCreate(false);
                     setEditingId(selected.id);
@@ -1035,8 +1099,8 @@ export const Dashboard: React.FC = () => {
                   <span>Apply Profile</span>
                 </div>
                 {pagedScanRepos.map((repo) => {
-                  const matchedProfile = profiles.find(
-                    (p) => p.id === repo.matchedProfileId,
+                  const appliedProfile = profiles.find(
+                    (p) => p.id === repo.appliedProfileId,
                   );
                   const targetProfileId = applyTargets[repo.path] ?? "";
                   const isApplying = applyingPath === repo.path;
@@ -1081,13 +1145,13 @@ export const Dashboard: React.FC = () => {
                               </div>
                             )}
                             <div className="scan-identity-badges">
-                              {matchedProfile ? (
+                              {appliedProfile ? (
                                 <span className="detail-item scan-match-badge">
-                                  {matchedProfile.label}
+                                  Applied: {appliedProfile.label}
                                 </span>
                               ) : (
                                 <span className="muted scan-no-match">
-                                  No match
+                                  No exact profile match
                                 </span>
                               )}
                               {scanSnapshots[repo.path] && (
