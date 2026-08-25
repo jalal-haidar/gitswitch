@@ -10,6 +10,7 @@ use tauri::{AppHandle, Manager};
 
 use crate::config::store::atomic_replace;
 use crate::models::GitConfigSnapshot;
+use crate::path_security;
 
 const SNAPSHOT_FILE_NAME: &str = "git-snapshots.json";
 const SNAPSHOT_VERSION: u32 = 1;
@@ -52,19 +53,11 @@ fn snapshot_path(app: &AppHandle) -> Result<PathBuf> {
 }
 
 pub(crate) fn normalize_repo_key(path: &Path) -> Result<String, String> {
-    let canonical = fs::canonicalize(path).map_err(|error| {
-        format!(
-            "Failed to canonicalize repository {}: {error}",
-            path.display()
-        )
-    })?;
+    let canonical = path_security::canonicalize_existing(path, "repository")?;
     let mut normalized = canonical.to_string_lossy().replace('\\', "/");
     #[cfg(windows)]
     {
-        normalized = normalized
-            .strip_prefix("//?/")
-            .unwrap_or(&normalized)
-            .to_lowercase();
+        normalized = normalized.to_lowercase();
     }
     Ok(normalized)
 }

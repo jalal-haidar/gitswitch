@@ -4,6 +4,7 @@ mod config;
 mod errors;
 mod git;
 mod models;
+mod path_security;
 mod tray;
 
 #[cfg(feature = "native-test-support")]
@@ -23,6 +24,9 @@ pub fn run() {
         .setup(|app| {
             if let Err(error) = commands::profiles::migrate_legacy_active_state(app.handle()) {
                 eprintln!("[migration] failed to remove legacy active profile state: {error}");
+            }
+            if let Err(error) = commands::profiles::normalize_stored_profile_paths(app.handle()) {
+                eprintln!("[migration] failed to canonicalize stored SSH key paths: {error}");
             }
             tray::setup_tray(app)?;
             auto_switch::start_auto_switch_watcher(app.handle().clone());
@@ -85,5 +89,65 @@ pub fn run() {
         Err(e) => {
             eprintln!("error while running tauri application: {}", e);
         }
+    }
+}
+
+#[cfg(test)]
+mod security_config_tests {
+    use serde_json::Value;
+
+    #[test]
+    fn production_csp_is_restrictive_and_remote_free() {
+        let config: Value = serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+        let security = &config["app"]["security"];
+        let csp = security["csp"].as_object().expect("production CSP object");
+
+        assert_eq!(csp["default-src"], "'self'");
+        assert_eq!(csp["connect-src"], "ipc: http://ipc.localhost");
+        assert_eq!(csp["object-src"], "'none'");
+        assert_eq!(csp["frame-ancestors"], "'none'");
+        let serialized = serde_json::to_string(csp).unwrap();
+        assert!(!serialized.contains("https://"));
+        assert!(!serialized.contains("http://") || serialized.contains("http://ipc.localhost"));
+        assert!(!serialized.contains("unsafe-eval"));
+        assert!(security["devCsp"].is_null());
+        assert!(!include_str!("../../src/styles/index.css").contains("fonts.googleapis.com"));
+    }
+
+    #[test]
+    fn main_window_capability_is_exact_and_scoped() {
+        let capability: Value =
+            serde_json::from_str(include_str!("../capabilities/default.json")).unwrap();
+        let permissions = capability["permissions"].as_array().unwrap();
+        let identifiers = permissions
+            .iter()
+            .map(|permission| {
+                permission
+                    .as_str()
+                    .or_else(|| permission["identifier"].as_str())
+                    .unwrap()
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            identifiers,
+            vec![
+                "core:app:allow-version",
+                "core:event:allow-listen",
+                "core:event:allow-unlisten",
+                "core:window:allow-set-title",
+                "dialog:allow-open",
+                "dialog:allow-save",
+                "updater:allow-check",
+                "updater:allow-download-and-install",
+                "opener:allow-open-url",
+            ]
+        );
+        assert_eq!(
+            permissions[8]["allow"][0]["url"],
+            "https://git-scm.com/downloads"
+        );
+        assert_eq!(capability["local"], true);
+        assert!(capability.get("remote").is_none());
     }
 }

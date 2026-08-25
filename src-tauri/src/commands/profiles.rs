@@ -4,6 +4,7 @@ use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::git::{self, no_window, GitScope, ProcessGitExecutor};
+use crate::path_security;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter};
 use uuid::Uuid;
@@ -58,25 +59,18 @@ fn is_plausible_email(email: &str) -> bool {
     local_ok && domain_ok
 }
 
-/// Returns the current user's home directory, first expanding a leading `~`.
-fn resolve_path(raw: &str) -> std::path::PathBuf {
-    if raw.starts_with('~') {
-        let home = std::env::var("USERPROFILE")
-            .or_else(|_| std::env::var("HOME"))
-            .unwrap_or_default();
-        let stripped = raw.trim_start_matches('~').trim_start_matches(['/', '\\']);
-        std::path::Path::new(&home).join(stripped)
-    } else {
-        std::path::PathBuf::from(raw)
+fn normalize_profile_ssh_path(profile: &mut GitProfile) -> Result<(), String> {
+    let Some(raw) = profile.ssh_key_path.clone() else {
+        return Ok(());
+    };
+    let raw = sanitize_string(&raw, 1024);
+    if raw.is_empty() {
+        profile.ssh_key_path = None;
+        return Ok(());
     }
-}
-
-/// Returns the home directory path, or `None` if it cannot be determined.
-fn user_home_dir() -> Option<std::path::PathBuf> {
-    std::env::var("USERPROFILE")
-        .or_else(|_| std::env::var("HOME"))
-        .ok()
-        .map(std::path::PathBuf::from)
+    let canonical = path_security::canonical_ssh_key(&raw)?;
+    profile.ssh_key_path = Some(canonical.to_string_lossy().into_owned());
+    Ok(())
 }
 
 fn validate_and_sanitize_profile(p: &mut GitProfile) -> Result<(), String> {
@@ -86,35 +80,7 @@ fn validate_and_sanitize_profile(p: &mut GitProfile) -> Result<(), String> {
     p.email = sanitize_string(&p.email, 254);
     p.color = sanitize_string(&p.color, 32);
 
-    if let Some(ref ssh) = p.ssh_key_path.clone() {
-        let raw = sanitize_string(ssh, 1024);
-        if raw.is_empty() {
-            p.ssh_key_path = None;
-        } else {
-            let resolved = resolve_path(&raw);
-            // Security: SSH key must live inside the user's home directory
-            match user_home_dir() {
-                Some(home) => {
-                    if !resolved.starts_with(&home) {
-                        return Err(format!(
-                            "SSH key path must be inside your home directory ({})",
-                            home.display()
-                        ));
-                    }
-                }
-                None => {
-                    return Err(
-                        "Cannot determine home directory — SSH key path validation failed"
-                            .to_string(),
-                    );
-                }
-            }
-            if !resolved.exists() {
-                return Err(format!("SSH key file not found: {}", resolved.display()));
-            }
-            p.ssh_key_path = Some(resolved.to_string_lossy().into_owned());
-        }
-    }
+    normalize_profile_ssh_path(p)?;
 
     if let Some(ref mut gpg) = p.gpg_key_id.clone() {
         let s = sanitize_string(gpg, 128);
@@ -149,7 +115,15 @@ pub fn get_profiles(app: AppHandle) -> Result<Vec<GitProfile>, String> {
 pub(crate) fn verified_global_profile(app: &AppHandle) -> Option<GitProfile> {
     let config = store::load_config(app).ok()?;
     let snapshot = git::read_snapshot(&ProcessGitExecutor::default(), &GitScope::Global).ok()?;
-    git::unique_matching_profile(&config.profiles, &snapshot).cloned()
+    let profiles = config
+        .profiles
+        .into_iter()
+        .map(|mut profile| {
+            let _ = normalize_profile_ssh_path(&mut profile);
+            profile
+        })
+        .collect::<Vec<_>>();
+    git::unique_matching_profile(&profiles, &snapshot).cloned()
 }
 
 #[tauri::command]
@@ -164,6 +138,36 @@ pub(crate) fn migrate_legacy_active_state(app: &AppHandle) -> Result<(), String>
     }
     store::update_config(app, |config| {
         config.legacy_active_profile_id = None;
+        Ok(())
+    })
+}
+
+pub(crate) fn normalize_stored_profile_paths(app: &AppHandle) -> Result<(), String> {
+    let config = store::load_config(app).map_err(|error| error.to_string())?;
+    let replacements = config
+        .profiles
+        .iter()
+        .filter_map(|profile| {
+            let original = profile.ssh_key_path.clone()?;
+            let mut normalized = profile.clone();
+            normalize_profile_ssh_path(&mut normalized).ok()?;
+            (normalized.ssh_key_path.as_ref() != Some(&original))
+                .then_some((profile.id.clone(), normalized.ssh_key_path))
+        })
+        .collect::<Vec<_>>();
+    if replacements.is_empty() {
+        return Ok(());
+    }
+    store::update_config(app, |config| {
+        for (profile_id, normalized_path) in &replacements {
+            if let Some(profile) = config
+                .profiles
+                .iter_mut()
+                .find(|profile| profile.id == *profile_id)
+            {
+                profile.ssh_key_path = normalized_path.clone();
+            }
+        }
         Ok(())
     })
 }
@@ -260,12 +264,13 @@ pub fn delete_profile(app: AppHandle, id: String) -> Result<(), String> {
 pub fn switch_profile_globally(app: AppHandle, id: String) -> Result<(), String> {
     let _transaction = git::transaction_guard();
     let config = store::load_config(&app).map_err(|e| e.to_string())?;
-    let profile = config
+    let mut profile = config
         .profiles
         .iter()
         .find(|p| p.id == id)
         .cloned()
         .ok_or_else(|| format!("Profile not found: {id}"))?;
+    normalize_profile_ssh_path(&mut profile)?;
     let executor = ProcessGitExecutor::default();
     let scope = GitScope::Global;
     let desired = git::snapshot_for_profile(&profile)?;
@@ -294,27 +299,35 @@ pub fn switch_profile_for_repo(
     source: RepoApplySource,
     rule_id: Option<&str>,
 ) -> Result<RepoApplyEvent, String> {
+    let canonical_repo = find_git_root(repo_path).ok_or_else(|| {
+        format!(
+            "Not a git repository (or any parent directory): {}",
+            repo_path.display()
+        )
+    })?;
     let _transaction = git::transaction_guard();
     let config = store::load_config(&app).map_err(|e| e.to_string())?;
-    let profile = config
+    let mut profile = config
         .profiles
         .iter()
         .find(|p| p.id == id)
         .cloned()
         .ok_or_else(|| format!("Profile not found: {id}"))?;
-    let scope = GitScope::Local(repo_path.to_path_buf());
+    normalize_profile_ssh_path(&mut profile)?;
+    let scope = GitScope::Local(canonical_repo.clone());
     let executor = ProcessGitExecutor::default();
     let desired = git::snapshot_for_profile(&profile)?;
     git::preflight(&executor, &scope)?;
     let baseline = git::read_snapshot(&executor, &scope)?;
-    let previous_snapshot = snapshots::swap_repository(&app, repo_path, Some(baseline.clone()))?;
+    let previous_snapshot =
+        snapshots::swap_repository(&app, &canonical_repo, Some(baseline.clone()))?;
 
     if let Err(operation_error) =
         git::apply_snapshot_transaction(&executor, &scope, "apply", &desired, &baseline)
     {
         return Err(compensate_snapshot_failure(
             operation_error,
-            snapshots::swap_repository(&app, repo_path, previous_snapshot).err(),
+            snapshots::swap_repository(&app, &canonical_repo, previous_snapshot).err(),
         ));
     }
 
@@ -322,8 +335,6 @@ pub fn switch_profile_for_repo(
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_millis() as u64)
         .unwrap_or(0);
-    let canonical_repo =
-        std::fs::canonicalize(repo_path).unwrap_or_else(|_| repo_path.to_path_buf());
     let event = RepoApplyEvent {
         profile_id: profile.id.clone(),
         profile_label: profile.label.clone(),
@@ -350,7 +361,7 @@ pub fn switch_profile_for_repo(
     }) {
         let rollback = collect_rollback_failures([
             git::rollback_to_snapshot(&executor, &scope, &baseline),
-            snapshots::swap_repository(&app, repo_path, previous_snapshot)
+            snapshots::swap_repository(&app, &canonical_repo, previous_snapshot)
                 .err()
                 .map(|error| format!("snapshot rollback failed: {error}")),
         ]);
@@ -442,14 +453,7 @@ struct ProfilesExport {
 
 #[tauri::command]
 pub fn export_profiles(app: AppHandle, path: String) -> Result<(), String> {
-    // Validate export path is within the user's home directory
-    let export_path = std::path::Path::new(&path);
-    if let Some(home) = user_home_dir() {
-        let parent = export_path.parent().unwrap_or(export_path);
-        if !parent.starts_with(&home) {
-            return Err("Export path must be inside your home directory".to_string());
-        }
-    }
+    let export_path = path_security::canonical_export_target(&path)?;
 
     let config = store::load_config(&app).map_err(|e| e.to_string())?;
     let export = ProfilesExport {
@@ -458,8 +462,8 @@ pub fn export_profiles(app: AppHandle, path: String) -> Result<(), String> {
     };
     let json =
         serde_json::to_string_pretty(&export).map_err(|e| format!("Serialization error: {e}"))?;
-    let mut file =
-        std::fs::File::create(&path).map_err(|e| format!("Could not create file: {e}"))?;
+    let mut file = std::fs::File::create(&export_path)
+        .map_err(|e| format!("Could not create export file: {e}"))?;
     file.write_all(json.as_bytes())
         .map_err(|e| format!("Write error: {e}"))?;
     file.sync_all().map_err(|e| format!("Sync error: {e}"))?;
@@ -562,7 +566,12 @@ pub fn discard_global_snapshot(app: AppHandle) -> Result<(), String> {
 
 /// Walk up from `path` until we find a directory that contains `.git`.
 pub(crate) fn find_git_root(path: &Path) -> Option<std::path::PathBuf> {
-    let mut current = path.to_path_buf();
+    let canonical = path_security::canonicalize_existing(path, "repository path").ok()?;
+    let mut current = if canonical.is_file() {
+        canonical.parent()?.to_path_buf()
+    } else {
+        canonical
+    };
     loop {
         if current.join(".git").exists() {
             return Some(current);
@@ -721,81 +730,51 @@ fn extract_github_username(output: &str) -> Option<String> {
         .filter(|s| !s.is_empty())
 }
 
+fn ssh_test_args(key_path: &str) -> Vec<String> {
+    vec![
+        "-T".to_string(),
+        "-i".to_string(),
+        key_path.to_string(),
+        "-o".to_string(),
+        "IdentitiesOnly=yes".to_string(),
+        "-o".to_string(),
+        "StrictHostKeyChecking=yes".to_string(),
+        "-o".to_string(),
+        "UpdateHostKeys=no".to_string(),
+        "-o".to_string(),
+        "BatchMode=yes".to_string(),
+        "-o".to_string(),
+        "ConnectTimeout=10".to_string(),
+        "git@github.com".to_string(),
+    ]
+}
+
+fn ssh_host_verification_failure(output: &str) -> Option<String> {
+    let output = output.to_lowercase();
+    if output.contains("remote host identification has changed")
+        || output.contains("offending") && output.contains("host key")
+    {
+        return Some("GitHub's SSH host key differs from your known_hosts entry. Verify the published GitHub fingerprint and repair known_hosts outside GitSwitch before retrying.".to_string());
+    }
+    if output.contains("host key verification failed")
+        || output.contains("host key is known for")
+        || output.contains("authenticity of host")
+    {
+        return Some("GitHub is not trusted in your OpenSSH known_hosts file. Verify GitHub's published fingerprint, connect once with OpenSSH in a terminal, then retry.".to_string());
+    }
+    None
+}
+
 #[tauri::command]
-pub fn test_ssh_connection(
-    key_path: String,
-    host: Option<String>,
-) -> Result<SshTestResult, String> {
+pub fn test_ssh_connection(key_path: String) -> Result<SshTestResult, String> {
     if key_path.trim().is_empty() {
         return Err("SSH key path is required".to_string());
     }
 
-    // Resolve and validate the key path is within the user's home directory
-    let resolved_key = resolve_path(key_path.trim());
-    match user_home_dir() {
-        Some(home) => {
-            if !resolved_key.starts_with(&home) {
-                return Err("SSH key must be inside your home directory".to_string());
-            }
-        }
-        None => {
-            return Err(
-                "Cannot determine home directory — SSH key path validation failed".to_string(),
-            );
-        }
-    }
-
-    if !resolved_key.exists() {
-        return Err(format!("SSH key file not found: {}", key_path));
-    }
-
+    let resolved_key = path_security::canonical_ssh_key(key_path.trim())?;
     let key_path_str = resolved_key.to_string_lossy().to_string();
-
-    // Validate and sanitize the host parameter
-    let ssh_host = match host.as_deref() {
-        Some(h) if !h.is_empty() => {
-            let trimmed = h.trim();
-            // Validate host format: must be a valid SSH destination (user@host or host)
-            // Only allow alphanumeric, dots, hyphens, underscores, colons, and @
-            if !trimmed
-                .chars()
-                .all(|c| c.is_alphanumeric() || matches!(c, '.' | '-' | '_' | ':' | '@'))
-            {
-                return Err("Invalid host format — only alphanumeric characters, dots, hyphens, and @ are allowed".to_string());
-            }
-            if trimmed.len() > 253 {
-                return Err("Host name is too long".to_string());
-            }
-            trimmed.to_string()
-        }
-        _ => "git@github.com".to_string(),
-    };
-
-    let service = if ssh_host.contains("github.com") {
-        "GitHub"
-    } else if ssh_host.contains("gitlab.com") {
-        "GitLab"
-    } else if ssh_host.contains("bitbucket.org") {
-        "Bitbucket"
-    } else {
-        "Git host"
-    };
-
     let mut ssh_cmd = Command::new("ssh");
-    ssh_cmd.args([
-        "-T",
-        "-i",
-        &key_path_str,
-        "-o",
-        "IdentitiesOnly=yes",
-        "-o",
-        "StrictHostKeyChecking=no",
-        "-o",
-        "BatchMode=yes",
-        "-o",
-        "ConnectTimeout=10",
-        &ssh_host,
-    ]);
+    ssh_cmd.args(ssh_test_args(&key_path_str));
     no_window(&mut ssh_cmd);
     let output = ssh_cmd.output().map_err(|e| {
         if e.kind() == std::io::ErrorKind::NotFound {
@@ -822,27 +801,17 @@ pub fn test_ssh_connection(
             success: true,
             username: username.clone(),
             message: format!(
-                "Connected to {} as {}",
-                service,
+                "Connected to GitHub as {}",
                 username.as_deref().unwrap_or("unknown")
             ),
         });
     }
 
-    if combined.contains("Welcome to GitLab") {
-        let username = combined
-            .split('@')
-            .nth(1)
-            .and_then(|s| s.split('!').next())
-            .map(|s| s.trim().to_string());
+    if let Some(message) = ssh_host_verification_failure(&combined) {
         return Ok(SshTestResult {
-            success: true,
-            username: username.clone(),
-            message: format!(
-                "Connected to {} as {}",
-                service,
-                username.as_deref().unwrap_or("unknown")
-            ),
+            success: false,
+            username: None,
+            message,
         });
     }
 
@@ -851,10 +820,9 @@ pub fn test_ssh_connection(
         return Ok(SshTestResult {
             success: false,
             username: None,
-            message: format!(
-                "Authentication failed — make sure this SSH key is added to your {} account",
-                service
-            ),
+            message:
+                "Authentication failed — make sure this SSH key is added to your GitHub account"
+                    .to_string(),
         });
     }
 
@@ -865,10 +833,7 @@ pub fn test_ssh_connection(
         return Ok(SshTestResult {
             success: false,
             username: None,
-            message: format!(
-                "Could not reach {} — check your network connection",
-                service
-            ),
+            message: "Could not reach GitHub — check your network connection".to_string(),
         });
     }
 
@@ -876,7 +841,7 @@ pub fn test_ssh_connection(
         success: false,
         username: None,
         message: if combined.trim().is_empty() {
-            format!("No response from {}", service)
+            "No response from GitHub".to_string()
         } else {
             combined.trim().to_string()
         },
@@ -982,19 +947,33 @@ mod tests {
         assert!(!is_plausible_email("user<>@example.com"));
     }
 
-    // ── resolve_path ─────────────────────────────────────────────
+    // ── SSH command policy ───────────────────────────────────────
     #[test]
-    fn resolve_path_absolute_unchanged() {
-        let p = resolve_path("/some/path/to/key");
-        assert_eq!(p, std::path::PathBuf::from("/some/path/to/key"));
+    fn ssh_test_requires_verified_system_known_hosts() {
+        let args = ssh_test_args("/home/alice/.ssh/id_ed25519");
+        assert!(args.iter().any(|arg| arg == "StrictHostKeyChecking=yes"));
+        assert!(args.iter().any(|arg| arg == "UpdateHostKeys=no"));
+        assert!(!args
+            .iter()
+            .any(|arg| arg.eq_ignore_ascii_case("StrictHostKeyChecking=no")));
+        assert_eq!(args.last().map(String::as_str), Some("git@github.com"));
     }
 
     #[test]
-    fn resolve_path_tilde_expands() {
-        let p = resolve_path("~/.ssh/id_ed25519");
-        // Should not still start with ~
-        assert!(!p.to_string_lossy().starts_with('~'));
-        assert!(p.to_string_lossy().contains(".ssh"));
+    fn ssh_host_verification_failures_are_actionable_and_distinct() {
+        let unknown = ssh_host_verification_failure(
+            "No ED25519 host key is known for github.com and you have requested strict checking. Host key verification failed.",
+        )
+        .unwrap();
+        let changed = ssh_host_verification_failure(
+            "WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED! Offending ED25519 key",
+        )
+        .unwrap();
+
+        assert!(unknown.contains("not trusted"));
+        assert!(unknown.contains("OpenSSH"));
+        assert!(changed.contains("differs"));
+        assert!(changed.contains("outside GitSwitch"));
     }
 
     // ── validate_and_sanitize_profile ────────────────────────────

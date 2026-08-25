@@ -1,8 +1,17 @@
 import React, { useState } from "react";
 import { CheckCircle } from "lucide-react";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { useProfileStore, GitProfile } from "../stores/useProfileStore";
 import { useToast } from "./ui/useToast";
 import { normalizeBackendError } from "../utils/error";
+
+export const GIT_INSTALL_HELP_URL = "https://git-scm.com/downloads";
+
+export function approvedHelpUrl(hint: unknown): string | null {
+  return typeof hint === "string" && hint.includes(GIT_INSTALL_HELP_URL)
+    ? GIT_INSTALL_HELP_URL
+    : null;
+}
 
 export const DetectedProfilesList: React.FC = () => {
   const detectedProfiles = useProfileStore((s) => s.detectedProfiles);
@@ -39,10 +48,11 @@ export const DetectedProfilesList: React.FC = () => {
       const info = normalizeBackendError(e);
       const actions = [] as { label: string; onClick: () => void }[];
       actions.push({ label: "Retry", onClick: () => handleImport(p) });
-      if (info.hint && typeof info.hint === "string") {
+      const helpUrl = approvedHelpUrl(info.hint);
+      if (helpUrl) {
         actions.push({
           label: "Help",
-          onClick: () => window.open(info.hint as string, "_blank"),
+          onClick: () => void openUrl(helpUrl).catch(() => undefined),
         });
       }
 
@@ -92,10 +102,11 @@ export const DetectedProfilesList: React.FC = () => {
         label: "Retry",
         onClick: () => handleImportAndActivate(p),
       });
-      if (info.hint && typeof info.hint === "string") {
+      const helpUrl = approvedHelpUrl(info.hint);
+      if (helpUrl) {
         actions.push({
           label: "Help",
-          onClick: () => window.open(info.hint as string, "_blank"),
+          onClick: () => void openUrl(helpUrl).catch(() => undefined),
         });
       }
 

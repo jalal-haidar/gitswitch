@@ -2,7 +2,6 @@ import { describe, it, expect } from "vitest";
 import {
   isPlausibleEmail,
   sanitizeString,
-  isValidSshHost,
   isPlausibleGpgKeyId,
   isValidHexColor,
   validateProfileForm,
@@ -65,26 +64,6 @@ describe("sanitizeString", () => {
 
   it("handles empty strings", () => {
     expect(sanitizeString("", 100)).toBe("");
-  });
-});
-
-describe("isValidSshHost", () => {
-  it("accepts valid hosts", () => {
-    expect(isValidSshHost("github.com")).toBe(true);
-    expect(isValidSshHost("git@github.com")).toBe(true);
-    expect(isValidSshHost("my-server.local")).toBe(true);
-    expect(isValidSshHost("192.168.1.1")).toBe(true);
-  });
-
-  it("rejects empty hosts", () => {
-    expect(isValidSshHost("")).toBe(false);
-    expect(isValidSshHost("   ")).toBe(false);
-  });
-
-  it("rejects hosts with dangerous characters", () => {
-    expect(isValidSshHost("host; rm -rf /")).toBe(false);
-    expect(isValidSshHost("$(evil)")).toBe(false);
-    expect(isValidSshHost("host`cmd`")).toBe(false);
   });
 });
 

@@ -11,7 +11,6 @@ export const LIMITS = {
   COLOR: 32,
   SSH_KEY_PATH: 1024,
   GPG_KEY_ID: 128,
-  HOST: 253,
 } as const;
 
 /**
@@ -61,16 +60,6 @@ export function sanitizeString(s: string, maxLen: number): string {
   // eslint-disable-next-line no-control-regex
   const cleaned = s.replace(/[\x00-\x1F\x7F-\x9F]/g, "");
   return cleaned.slice(0, maxLen).trim();
-}
-
-/**
- * Validate an SSH host parameter — must only contain safe characters.
- * Mirrors the backend's host validation in `test_ssh_connection`.
- */
-export function isValidSshHost(host: string): boolean {
-  const trimmed = host.trim();
-  if (trimmed.length === 0 || trimmed.length > LIMITS.HOST) return false;
-  return /^[a-zA-Z0-9.\-_:@]+$/.test(trimmed);
 }
 
 /**

@@ -1,12 +1,21 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Capability for the main window",
+  "description": "Least-privilege capability for the trusted local main window",
+  "local": true,
   "windows": ["main"],
   "permissions": [
-    "core:default",
-    "opener:default",
-    "updater:default",
-    "dialog:default"
+    "core:app:allow-version",
+    "core:event:allow-listen",
+    "core:event:allow-unlisten",
+    "core:window:allow-set-title",
+    "dialog:allow-open",
+    "dialog:allow-save",
+    "updater:allow-check",
+    "updater:allow-download-and-install",
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [{ "url": "https://git-scm.com/downloads" }]
+    }
   ]
 }

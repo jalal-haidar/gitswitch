@@ -245,11 +245,23 @@ pub(crate) fn expected_snapshot_for_profile(profile: &GitProfile) -> GitConfigSn
             .to_string(),
         ),
         core_ssh_command: ssh_key_path.map(|path| {
+            let normalized = path.replace('\\', "/");
             format!(
-                "ssh -i \"{}\" -o IdentitiesOnly=yes",
-                path.replace('\\', "/")
+                "ssh -i {} -o IdentitiesOnly=yes",
+                shell_quote_argument(&normalized)
             )
         }),
+    }
+}
+
+fn shell_quote_argument(value: &str) -> String {
+    if !value
+        .chars()
+        .any(|character| matches!(character, '"' | '$' | '`' | '\\' | '\n' | '\r'))
+    {
+        format!("\"{value}\"")
+    } else {
+        format!("'{}'", value.replace('\'', "'\"'\"'"))
     }
 }
 
@@ -575,5 +587,32 @@ mod matching_tests {
         let snapshot = expected_snapshot_for_profile(&profiles[0]);
 
         assert!(unique_matching_profile(&profiles, &snapshot).is_none());
+    }
+
+    #[test]
+    fn ssh_key_paths_are_shell_quoted_without_interpolation() {
+        let mut profile = profile("work", "alice@work.test");
+        profile.ssh_key_path = Some("C:/Users/Alice/key $(touch bad) 'work'".to_string());
+
+        let snapshot = expected_snapshot_for_profile(&profile);
+
+        assert_eq!(
+            snapshot.core_ssh_command.as_deref(),
+            Some(
+                "ssh -i 'C:/Users/Alice/key $(touch bad) '\"'\"'work'\"'\"'' -o IdentitiesOnly=yes"
+            )
+        );
+    }
+
+    #[test]
+    fn ordinary_ssh_key_paths_keep_the_compatible_representation() {
+        let profile = profile("work", "alice@work.test");
+
+        let snapshot = expected_snapshot_for_profile(&profile);
+
+        assert_eq!(
+            snapshot.core_ssh_command.as_deref(),
+            Some("ssh -i \"C:/Users/Alice/.ssh/id_ed25519\" -o IdentitiesOnly=yes")
+        );
     }
 }

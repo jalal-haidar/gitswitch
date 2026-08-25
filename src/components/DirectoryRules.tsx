@@ -22,6 +22,14 @@ import {
 import { RuleCardSkeleton } from "./ui/Skeleton";
 import ConfirmModal from "./ui/ConfirmModal";
 
+function expectedSshCommand(keyPath: string): string {
+  const normalized = keyPath.replace(/\\/g, "/");
+  const quoted = /["$`\\\n\r]/.test(normalized)
+    ? `'${normalized.split("'").join("'\"'\"'")}'`
+    : `"${normalized}"`;
+  return `ssh -i ${quoted} -o IdentitiesOnly=yes`;
+}
+
 interface RuleDraft {
   id?: string;
   path: string;
@@ -676,9 +684,8 @@ export const DirectoryRulesSection: React.FC = () => {
                             // Build the exact core.sshCommand string that
                             // switch_profile_for_repo writes so we can do a
                             // value-level comparison, not just presence check.
-                            // Format: ssh -i "<path with forward slashes>" -o IdentitiesOnly=yes
                             const expectedSshCmd = profile?.sshKeyPath
-                              ? `ssh -i "${profile.sshKeyPath.replace(/\\/g, "/")}" -o IdentitiesOnly=yes`
+                              ? expectedSshCommand(profile.sshKeyPath)
                               : undefined;
                             // Profile has no SSH key → repo should have no sshCommand either.
                             const sshOk = expectedSshCmd

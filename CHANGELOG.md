@@ -5,6 +5,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+### Security
+
+- Canonicalized native SSH, repository, and export paths before enforcing boundaries, including symlink and Windows junction resolution.
+- Enabled strict OpenSSH known-host verification, a restrictive production CSP, and least-privilege Tauri permissions.
+
 ### Changed
 
 - Directory rules are now described and implemented as deterministic repo-local identity enforcement on relevant filesystem activity. Terminal navigation alone does not trigger rules.

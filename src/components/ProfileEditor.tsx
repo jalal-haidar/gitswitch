@@ -89,7 +89,6 @@ export const ProfileEditor: React.FC<ProfileEditorProps> = ({
     try {
       const result = await invoke<SshTestResult>("test_ssh_connection", {
         keyPath: value.sshKeyPath.trim(),
-        host: null,
       });
       setSshTestStatus(result);
     } catch (e) {
