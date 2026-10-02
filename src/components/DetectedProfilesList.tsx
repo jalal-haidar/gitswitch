@@ -34,7 +34,7 @@ export const DetectedProfilesList: React.FC = () => {
       });
       toast.show({ message: `Imported ${created.name}`, kind: "success" });
     } catch (e: any) {
-      const info = normalizeBackendError(e?.toString?.() ?? e);
+      const info = normalizeBackendError(e);
       const actions = [] as { label: string; onClick: () => void }[];
       actions.push({ label: "Retry", onClick: () => handleImport(p) });
       if (info.hint && typeof info.hint === "string") {
@@ -61,12 +61,12 @@ export const DetectedProfilesList: React.FC = () => {
       await invoke("apply_identity", {
         name: p.name,
         email: p.email,
-        gpg_key: p.gpgKeyId ?? null,
+        gpgKey: p.gpgKeyId ?? null,
       });
       toast.show({ message: `Applied ${p.name}`, kind: "success" });
     } catch (e: any) {
       console.error("apply_identity failed", e);
-      const info = normalizeBackendError(e?.toString?.() ?? e);
+      const info = normalizeBackendError(e);
       const actions = [] as { label: string; onClick: () => void }[];
       actions.push({ label: "Retry", onClick: () => handleApply(p) });
       if (info.hint && typeof info.hint === "string") {

@@ -9,7 +9,8 @@
 - **Profile Management:** Create and manage multiple Git profiles (Name, Email, SSH keys).
 - **One-Click Switch:** Change your global Git identity with a single click.
 - **Tauri-Powered:** Lightweight, fast, and secure desktop experience.
-- **Directory Rules (WIP):** Automatically switch profiles based on the directory you are working in.
+- **Directory Rules:** Repositories under a folder automatically use the chosen profile (via git `includeIf`).
+- **SSH Keys:** Generate or attach keys, write `~/.ssh/config` host aliases, and test the connection.
 
 ## 🛠️ Tech Stack
 
@@ -44,8 +45,8 @@
 - [x] Backend Persistence (JSON Storage)
 - [x] Rust Models & Commands
 - [x] Frontend Store (Zustand)
-- [/] UI Components (Current Focus)
-- [ ] SSH Key Management
+- [x] UI Components (profiles, directory rules, SSH)
+- [x] SSH Key Management
 - [ ] System Tray Integration
 
 ## 📦 Releases

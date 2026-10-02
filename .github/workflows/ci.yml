@@ -15,10 +15,14 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: "18"
+          node-version: "20"
+          cache: npm
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
+
+      - name: Type-check
+        run: npx tsc --noEmit
 
       - name: Run frontend tests
         run: npm run test:unit -- --run
@@ -28,11 +32,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Rust
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
+      # Tauri links against GTK/WebKit even for `cargo test`.
+      - name: Install Linux system libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev \
+            libayatana-appindicator3-dev librsvg2-dev libxdo-dev libssl-dev \
+            openssh-client git
 
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      # Tests shell out to real git and ssh-keygen and use a temporary identity.
       - name: Run cargo tests
         working-directory: src-tauri
-        run: cargo test --workspace --quiet
+        run: cargo test --lib

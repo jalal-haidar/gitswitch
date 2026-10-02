@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { invoke } from "@tauri-apps/api/core";
-import { normalizeBackendError } from "../utils/error";
+import { toUserMessage } from "../utils/error";
 
 export interface GitProfile {
   id: string;
@@ -11,9 +11,22 @@ export interface GitProfile {
   sshKeyPath?: string;
   gpgKeyId?: string;
   isDefault: boolean;
+  sshHostAlias?: string;
+  sshHostname?: string;
+}
+
+export interface DirectoryRule {
+  path: string;
+  profileId: string;
+}
+
+export interface EffectiveIdentity {
+  name?: string | null;
+  email?: string | null;
 }
 
 interface ProfileState {
+  directoryRules: DirectoryRule[];
   profiles: GitProfile[];
   loading: boolean;
   error: string | null;
@@ -30,10 +43,17 @@ interface ProfileState {
   deleteProfile: (id: string) => Promise<void>;
   switchProfileGlobally: (id: string) => Promise<void>;
   detectIdentities: (directory?: string) => Promise<void>;
+  fetchDirectoryRules: () => Promise<void>;
+  addDirectoryRule: (path: string, profileId: string) => Promise<void>;
+  removeDirectoryRule: (path: string) => Promise<void>;
+  previewDirectory: (path: string) => Promise<EffectiveIdentity>;
 }
 
+// Mutating actions record a readable message in `error` and rethrow the original
+// error so callers can show a toast (see useErrorToast).
 export const useProfileStore = create<ProfileState>((set, get) => ({
   profiles: [],
+  directoryRules: [],
   loading: false,
   error: null,
   detectedProfiles: [],
@@ -45,8 +65,9 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
     try {
       const profiles = await invoke<GitProfile[]>("get_profiles");
       set({ profiles, loading: false });
-    } catch (e: any) {
-      set({ error: e.toString(), loading: false });
+    } catch (e) {
+      set({ error: toUserMessage(e), loading: false });
+      throw e;
     }
   },
 
@@ -57,26 +78,21 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
         profile: { id: "", ...profileDraft },
       });
       await get().fetchProfiles();
-      set({ loading: false });
       return created;
-    } catch (e: any) {
-      set({ error: e.toString(), loading: false });
+    } catch (e) {
+      set({ error: toUserMessage(e), loading: false });
       throw e;
     }
   },
 
   findExistingProfile: (name?: string, email?: string) => {
-    const ps = get().profiles;
     if (!name && !email) return undefined;
-    return ps.find((p) => {
-      const matchesName = name
-        ? p.name.trim().toLowerCase() === name.trim().toLowerCase()
-        : true;
-      const matchesEmail = email
-        ? p.email.trim().toLowerCase() === email.trim().toLowerCase()
-        : true;
-      return matchesName && matchesEmail;
-    });
+    const norm = (s: string) => s.trim().toLowerCase();
+    return get().profiles.find(
+      (p) =>
+        (!name || norm(p.name) === norm(name)) &&
+        (!email || norm(p.email) === norm(email)),
+    );
   },
 
   updateProfile: async (profile) => {
@@ -84,8 +100,9 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
     try {
       await invoke("update_profile", { profile });
       await get().fetchProfiles();
-    } catch (e: any) {
-      set({ error: e.toString(), loading: false });
+    } catch (e) {
+      set({ error: toUserMessage(e), loading: false });
+      throw e;
     }
   },
 
@@ -93,9 +110,11 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
     set({ loading: true, error: null });
     try {
       await invoke("delete_profile", { id });
-      await get().fetchProfiles();
-    } catch (e: any) {
-      set({ error: e.toString(), loading: false });
+      // the backend also drops this profile's directory rules
+      await Promise.all([get().fetchProfiles(), get().fetchDirectoryRules()]);
+    } catch (e) {
+      set({ error: toUserMessage(e), loading: false });
+      throw e;
     }
   },
 
@@ -103,8 +122,9 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
     set({ error: null });
     try {
       await invoke("switch_profile_globally", { id });
-    } catch (e: any) {
-      set({ error: e.toString() });
+    } catch (e) {
+      set({ error: toUserMessage(e) });
+      throw e;
     }
   },
 
@@ -115,16 +135,46 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
         directory,
       });
       set({ detectedProfiles: detected, detectLoading: false });
-    } catch (e: any) {
-      // Normalize backend structured errors to user-friendly messages
-      try {
-        const info = normalizeBackendError(e?.toString?.() ?? e);
-        set({ detectError: info.message, detectLoading: false });
-      } catch {
-        set({ detectError: e.toString(), detectLoading: false });
-      }
-      // rethrow so callers (components) can display toasts or handle actions
+    } catch (e) {
+      set({ detectError: toUserMessage(e), detectLoading: false });
+      // rethrow so callers can show a toast with the hint
       throw e;
     }
   },
+
+  fetchDirectoryRules: async () => {
+    try {
+      const directoryRules = await invoke<DirectoryRule[]>(
+        "get_directory_rules",
+      );
+      set({ directoryRules });
+    } catch (e) {
+      set({ error: toUserMessage(e) });
+      throw e;
+    }
+  },
+
+  addDirectoryRule: async (path, profileId) => {
+    set({ error: null });
+    try {
+      await invoke("add_directory_rule", { path, profileId });
+      await get().fetchDirectoryRules();
+    } catch (e) {
+      set({ error: toUserMessage(e) });
+      throw e;
+    }
+  },
+
+  removeDirectoryRule: async (path) => {
+    set({ error: null });
+    try {
+      await invoke("remove_directory_rule", { path });
+      await get().fetchDirectoryRules();
+    } catch (e) {
+      set({ error: toUserMessage(e) });
+      throw e;
+    }
+  },
+
+  previewDirectory: (path) => invoke<EffectiveIdentity>("preview_directory", { path }),
 }));

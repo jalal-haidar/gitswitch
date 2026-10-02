@@ -1,48 +1,27 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { Plus, Users, RefreshCw } from "lucide-react";
-import { useProfileStore } from "../stores/useProfileStore";
-import { useToast } from "./ui/useToast";
-import { normalizeBackendError } from "../utils/error";
+import { GitProfile, useProfileStore } from "../stores/useProfileStore";
+import { useErrorToast } from "./ui/useErrorToast";
 import { ProfileCard } from "./ProfileCard";
 import DetectedProfilesList from "./DetectedProfilesList";
+import DirectoryRules from "./DirectoryRules";
+import ProfileForm from "./ProfileForm";
 
 export const Dashboard: React.FC = () => {
-  const {
-    profiles,
-    loading,
-    fetchProfiles,
-    addProfile,
-    detectIdentities,
-    detectLoading,
-  } = useProfileStore();
+  const { profiles, loading, fetchProfiles, detectIdentities, detectLoading } =
+    useProfileStore();
+  const showError = useErrorToast();
+  // undefined = form closed, null = creating, profile = editing
+  const [formTarget, setFormTarget] = useState<GitProfile | null | undefined>(
+    undefined,
+  );
 
   useEffect(() => {
-    fetchProfiles();
-  }, [fetchProfiles]);
+    fetchProfiles().catch((e) => showError(e, "Could not load profiles"));
+  }, [fetchProfiles, showError]);
 
-  const toast = useToast();
-
-  const handleAddDemo = () => {
-    addProfile({
-      label: "Personal",
-      name: "John Doe",
-      email: "john@doe.com",
-      color: "#7C3AED",
-      isDefault: true,
-    });
-  };
-
-  const handleDetectClick = async () => {
-    try {
-      await detectIdentities();
-    } catch (e: any) {
-      const info = normalizeBackendError(e?.toString?.() ?? e);
-      toast.show({
-        message: info.message,
-        kind: "error",
-        duration: info.hint ? 8000 : 6000,
-      });
-    }
+  const handleDetectClick = () => {
+    detectIdentities().catch((e) => showError(e));
   };
 
   return (
@@ -64,11 +43,22 @@ export const Dashboard: React.FC = () => {
             >
               <RefreshCw size={16} /> {detectLoading ? "Scanning…" : "Detect"}
             </button>
-            <button className="btn btn-primary" onClick={handleAddDemo}>
+            <button
+              className="btn btn-primary"
+              onClick={() => setFormTarget(null)}
+            >
               <Plus size={18} /> New Profile
             </button>
           </div>
         </div>
+
+        {formTarget !== undefined && (
+          <ProfileForm
+            key={formTarget?.id ?? "new"}
+            profile={formTarget ?? undefined}
+            onClose={() => setFormTarget(undefined)}
+          />
+        )}
 
         {loading ? (
           <div className="empty-state">Loading your profiles...</div>
@@ -84,10 +74,15 @@ export const Dashboard: React.FC = () => {
                 key={profile.id}
                 profile={profile}
                 isActive={profile.isDefault}
+                onEdit={() => setFormTarget(profile)}
               />
             ))}
           </div>
         )}
+
+        <section style={{ marginTop: 24 }}>
+          <DirectoryRules />
+        </section>
 
         <section style={{ marginTop: 24 }}>
           <DetectedProfilesList />

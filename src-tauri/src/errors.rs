@@ -8,6 +8,8 @@ pub enum BackendErrorKind {
     GitFailed,
     IoError,
     NotFound,
+    InvalidInput,
+    SshFailed,
     Unknown,
 }
 
@@ -59,6 +61,44 @@ impl BackendError {
     pub fn io_error(msg: impl Into<String>) -> Self {
         BackendError::new(BackendErrorKind::IoError, msg)
     }
+
+    pub fn not_found(msg: impl Into<String>) -> Self {
+        BackendError::new(BackendErrorKind::NotFound, msg)
+    }
+
+    pub fn invalid_input(msg: impl Into<String>) -> Self {
+        BackendError::new(BackendErrorKind::InvalidInput, msg)
+    }
+
+    pub fn ssh_failed(msg: impl Into<String>) -> Self {
+        BackendError::new(BackendErrorKind::SshFailed, "SSH command failed").with_details(msg)
+    }
+}
+
+impl From<std::io::Error> for BackendError {
+    fn from(e: std::io::Error) -> Self {
+        match e.kind() {
+            std::io::ErrorKind::PermissionDenied => BackendError::permission_denied(e.to_string()),
+            std::io::ErrorKind::NotFound => BackendError::not_found(e.to_string()),
+            _ => BackendError::io_error(e.to_string()),
+        }
+    }
+}
+
+impl From<anyhow::Error> for BackendError {
+    fn from(e: anyhow::Error) -> Self {
+        // Preserve a permission-denied cause from the underlying io::Error, if any.
+        let denied = e.chain().any(|c| {
+            c.downcast_ref::<std::io::Error>()
+                .is_some_and(|io| io.kind() == std::io::ErrorKind::PermissionDenied)
+        });
+        let msg = format!("{:#}", e);
+        if denied {
+            BackendError::permission_denied(msg)
+        } else {
+            BackendError::io_error(msg)
+        }
+    }
 }
 
 impl fmt::Display for BackendError {
@@ -92,5 +132,23 @@ mod tests {
         let s = e.to_string();
         assert!(s.contains("PermissionDenied") || s.contains("Permission denied"));
         assert!(s.contains("elevated") || s.contains("permissions"));
+    }
+
+    #[test]
+    fn io_error_conversion_maps_kinds() {
+        let denied: BackendError =
+            std::io::Error::new(std::io::ErrorKind::PermissionDenied, "nope").into();
+        assert!(matches!(denied.kind, BackendErrorKind::PermissionDenied));
+        let missing: BackendError =
+            std::io::Error::new(std::io::ErrorKind::NotFound, "gone").into();
+        assert!(matches!(missing.kind, BackendErrorKind::NotFound));
+    }
+
+    #[test]
+    fn anyhow_conversion_keeps_permission_cause() {
+        let io = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "nope");
+        let e: BackendError = anyhow::Error::new(io).context("writing config").into();
+        assert!(matches!(e.kind, BackendErrorKind::PermissionDenied));
+        assert!(e.hint.is_some());
     }
 }

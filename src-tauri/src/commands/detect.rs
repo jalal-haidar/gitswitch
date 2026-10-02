@@ -1,147 +1,40 @@
+use std::path::Path;
+use std::{env, fs};
+
 use tauri::AppHandle;
-use std::{process::Command, fs, env, path::Path};
-use crate::errors::BackendError;
 use uuid::Uuid;
 
+use crate::errors::BackendError;
+use crate::git;
 use crate::models::GitProfile;
 
+const PRIVATE_KEY_NAMES: [&str; 4] = ["id_ed25519", "id_rsa", "id_ecdsa", "id_dsa"];
+
 #[tauri::command]
-pub fn detect_identities(_app: AppHandle, directory: Option<String>) -> Result<Vec<GitProfile>, String> {
-    // If a directory is provided, run git commands there; otherwise use current dir
-    let dir = directory
-        .or_else(|| env::var("PWD").ok())
-        .unwrap_or_else(|| String::new());
-    let path = if dir.is_empty() { Path::new(".") } else { Path::new(&dir) };
+pub fn detect_identities(
+    _app: AppHandle,
+    directory: Option<String>,
+) -> Result<Vec<GitProfile>, BackendError> {
+    // Config lookups run in `directory` (so repo-local values win), else the current dir.
+    let dir = directory.or_else(|| env::var("PWD").ok()).unwrap_or_default();
+    let cwd = if dir.is_empty() { None } else { Some(Path::new(&dir)) };
 
-    // Helper to run git and capture stdout as trimmed string, returning detailed error on failure
-    let run_git = |args: &[&str]| -> Result<Option<String>, BackendError> {
-        let output = Command::new("git").args(args).current_dir(path).output().map_err(|e| {
-            if e.kind() == std::io::ErrorKind::NotFound {
-                BackendError::git_not_found()
-            } else {
-                BackendError::io_error(format!("failed to spawn git: {}", e))
-            }
-        })?;
+    let name = git::config_get("user.name", cwd)?.unwrap_or_default();
+    let email = git::config_get("user.email", cwd)?.unwrap_or_default();
+    let signingkey = git::config_get("user.signingkey", cwd)?.unwrap_or_default();
+    let ssh_key_path = find_default_ssh_key();
 
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-            // Map permission-related errors
-            let stderr_l = stderr.to_lowercase();
-            if stderr_l.contains("permission denied") || stderr_l.contains("cannot open") {
-                return Err(BackendError::permission_denied(stderr));
-            }
-            return Err(BackendError::git_failed(stderr));
-        }
-
-        let s = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        if s.is_empty() {
-            Ok(None)
-        } else {
-            Ok(Some(s))
-        }
-    };
-
-    // Try local (repo) values first, fall back to global
-    // Try local (repo) values first, fall back to global
-    let name = match run_git(&["config", "user.name"]) {
-        Ok(Some(v)) => v,
-        Ok(None) => match run_git(&["config", "--global", "--get", "user.name"]) {
-            Ok(Some(v)) => v,
-            Ok(None) => String::new(),
-            Err(e) => return Err(e.to_string()),
-        },
-        Err(e) => {
-            // If git executable missing or permission issues, abort.
-            match e.kind {
-                crate::errors::BackendErrorKind::GitNotFound
-                | crate::errors::BackendErrorKind::PermissionDenied => return Err(e.to_string()),
-                _ => {
-                    // Non-fatal git failure (e.g., not a git repository) — try global
-                    match run_git(&["config", "--global", "--get", "user.name"]) {
-                        Ok(Some(v)) => v,
-                        Ok(None) => String::new(),
-                        Err(e2) => return Err(e2.to_string()),
-                    }
-                }
-            }
-        }
-    };
-
-    let email = match run_git(&["config", "user.email"]) {
-        Ok(Some(v)) => v,
-        Ok(None) => match run_git(&["config", "--global", "--get", "user.email"]) {
-            Ok(Some(v)) => v,
-            Ok(None) => String::new(),
-            Err(e) => return Err(e.to_string()),
-        },
-        Err(e) => {
-            match e.kind {
-                crate::errors::BackendErrorKind::GitNotFound
-                | crate::errors::BackendErrorKind::PermissionDenied => return Err(e.to_string()),
-                _ => match run_git(&["config", "--global", "--get", "user.email"]) {
-                    Ok(Some(v)) => v,
-                    Ok(None) => String::new(),
-                    Err(e2) => return Err(e2.to_string()),
-                },
-            }
-        }
-    };
-
-    let signingkey = match run_git(&["config", "user.signingkey"]) {
-        Ok(Some(v)) => v,
-        Ok(None) => match run_git(&["config", "--global", "--get", "user.signingkey"]) {
-            Ok(Some(v)) => v,
-            Ok(None) => String::new(),
-            Err(e) => return Err(e.to_string()),
-        },
-        Err(e) => {
-            match e.kind {
-                crate::errors::BackendErrorKind::GitNotFound
-                | crate::errors::BackendErrorKind::PermissionDenied => return Err(e.to_string()),
-                _ => match run_git(&["config", "--global", "--get", "user.signingkey"]) {
-                    Ok(Some(v)) => v,
-                    Ok(None) => String::new(),
-                    Err(e2) => return Err(e2.to_string()),
-                },
-            }
-        }
-    };
-
-    // Detect simple SSH key presence in ~/.ssh (look for common private key names)
-    let home = env::var("HOME").or_else(|_| env::var("USERPROFILE")).unwrap_or_default();
-    let mut ssh_key_path: Option<String> = None;
-    if !home.is_empty() {
-        let ssh_dir = Path::new(&home).join(".ssh");
-        if ssh_dir.exists() && ssh_dir.is_dir() {
-            if let Ok(entries) = fs::read_dir(&ssh_dir) {
-                for entry in entries.flatten() {
-                    let p = entry.path();
-                    if let Some(fname) = p.file_name().and_then(|s| s.to_str()) {
-                        // look for common private key filenames; we will store the path to the private key
-                        if fname == "id_ed25519" || fname == "id_rsa" || fname == "id_ecdsa" || fname == "id_dsa" {
-                            ssh_key_path = Some(p.to_string_lossy().into_owned());
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // Build minimal profile if we found anything
     if name.is_empty() && email.is_empty() && signingkey.is_empty() && ssh_key_path.is_none() {
         return Ok(vec![]);
     }
 
-    let label = if !name.is_empty() && !email.is_empty() {
-        format!("{} <{}>", name, email)
-    } else if !name.is_empty() {
-        name.clone()
-    } else {
-        email.clone()
+    let label = match (name.is_empty(), email.is_empty()) {
+        (false, false) => format!("{} <{}>", name, email),
+        (false, true) => name.clone(),
+        _ => email.clone(),
     };
 
-    let profile = GitProfile {
+    Ok(vec![GitProfile {
         id: Uuid::new_v4().to_string(),
         label,
         name,
@@ -150,7 +43,17 @@ pub fn detect_identities(_app: AppHandle, directory: Option<String>) -> Result<V
         ssh_key_path,
         gpg_key_id: if signingkey.is_empty() { None } else { Some(signingkey) },
         is_default: false,
-    };
+        ..Default::default()
+    }])
+}
 
-    Ok(vec![profile])
+fn find_default_ssh_key() -> Option<String> {
+    let home = crate::paths::home_dir()?;
+    let entries = fs::read_dir(home.join(".ssh")).ok()?;
+    entries.flatten().map(|e| e.path()).find_map(|p| {
+        let fname = p.file_name()?.to_str()?;
+        PRIVATE_KEY_NAMES
+            .contains(&fname)
+            .then(|| p.to_string_lossy().into_owned())
+    })
 }

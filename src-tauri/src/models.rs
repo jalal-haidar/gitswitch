@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GitProfile {
     pub id: String,
@@ -11,6 +11,12 @@ pub struct GitProfile {
     pub ssh_key_path: Option<String>,
     pub gpg_key_id: Option<String>,
     pub is_default: bool,
+    /// `Host` alias written to `~/.ssh/config` (e.g. `github-work`).
+    #[serde(default)]
+    pub ssh_host_alias: Option<String>,
+    /// Real host the alias points at; defaults to `github.com` when unset.
+    #[serde(default)]
+    pub ssh_hostname: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

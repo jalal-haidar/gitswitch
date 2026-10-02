@@ -392,3 +392,34 @@ h4 {
     opacity: 1;
   }
 }
+
+/* Directory rules */
+.directory-rules .rule-list {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.rule-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.rule-form input,
+.rule-form select {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  color: inherit;
+  padding: 8px 10px;
+}
+
+.rule-form input {
+  flex: 1;
+  min-width: 180px;
+}
