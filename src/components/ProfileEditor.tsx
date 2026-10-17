@@ -8,6 +8,7 @@ import {
   LIMITS,
 } from "../utils/validation";
 import { friendlyErrorMessage } from "../utils/error";
+import { generateSshKey } from "../api/ssh";
 
 const HelpTooltip: React.FC<{ text: string }> = ({ text }) => (
   <span className="help-tooltip" aria-label={text} tabIndex={0}>
@@ -81,6 +82,30 @@ export const ProfileEditor: React.FC<ProfileEditorProps> = ({
     null,
   );
   const [sshTesting, setSshTesting] = useState(false);
+  const [generating, setGenerating] = useState(false);
+  const [publicKey, setPublicKey] = useState<string | null>(null);
+
+  const generateKey = async () => {
+    setGenerating(true);
+    setSshTestStatus(null);
+    setPublicKey(null);
+    try {
+      const result = await generateSshKey(
+        value.label.trim(),
+        value.email.trim(),
+      );
+      setField("sshKeyPath", result.privateKeyPath);
+      setPublicKey(result.publicKey);
+    } catch (e) {
+      setSshTestStatus({
+        success: false,
+        username: null,
+        message: friendlyErrorMessage(e),
+      });
+    } finally {
+      setGenerating(false);
+    }
+  };
 
   const testSshConnection = async () => {
     if (!value.sshKeyPath?.trim()) return;
@@ -268,6 +293,15 @@ export const ProfileEditor: React.FC<ProfileEditorProps> = ({
             >
               Browse
             </button>
+            <button
+              type="button"
+              className="btn btn-secondary btn-browse"
+              title="Generate a new ed25519 key in ~/.ssh"
+              onClick={generateKey}
+              disabled={generating || !value.label.trim()}
+            >
+              {generating ? "Generating…" : "Generate"}
+            </button>
             {value.sshKeyPath?.trim() && (
               <button
                 type="button"
@@ -280,6 +314,21 @@ export const ProfileEditor: React.FC<ProfileEditorProps> = ({
               </button>
             )}
           </div>
+          {publicKey && (
+            <div className="ssh-public-key" role="group" aria-label="Public key">
+              <p>Add this public key to GitHub → Settings → SSH keys:</p>
+              <textarea readOnly rows={3} value={publicKey} />
+              <button
+                type="button"
+                className="btn btn-secondary btn-browse"
+                onClick={() => {
+                  void navigator.clipboard?.writeText(publicKey).catch(() => {});
+                }}
+              >
+                Copy public key
+              </button>
+            </div>
+          )}
           {sshTestStatus && (
             <div
               className={`ssh-test-status ${sshTestStatus.success ? "ssh-test-ok" : "ssh-test-fail"}`}

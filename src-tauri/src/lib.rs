@@ -5,6 +5,7 @@ mod errors;
 mod git;
 mod models;
 mod path_security;
+mod ssh_keys;
 mod tray;
 
 #[cfg(feature = "native-test-support")]
@@ -58,6 +59,9 @@ pub fn run() {
             commands::rules::update_directory_rule,
             commands::rules::delete_directory_rule,
             commands::profiles::test_ssh_connection,
+            commands::ssh::generate_ssh_key,
+            commands::ssh::list_ssh_keys,
+            commands::ssh::read_public_key,
             commands::profiles::apply_profile_to_repo,
             commands::profiles::restore_repo_snapshot,
             commands::profiles::has_repo_snapshot,
