@@ -95,4 +95,31 @@ describe("toEditorValue", () => {
       "not trusted in your OpenSSH known_hosts",
     );
   });
+  it("generates a key, fills the path and shows the public key", async () => {
+    mocks.invoke.mockResolvedValue({
+      privateKeyPath: "/home/jane/.ssh/gitswitch_work",
+      publicKey: "ssh-ed25519 AAAA jane@work.com",
+    });
+    render(
+      React.createElement(ProfileEditor, {
+        initialValue: { ...toEditorValue(fullProfile), sshKeyPath: "" },
+        submitLabel: "Save",
+        onSubmit: () => undefined,
+        onCancel: () => undefined,
+      }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Generate" }));
+
+    await waitFor(() =>
+      expect(mocks.invoke).toHaveBeenCalledWith("generate_ssh_key", {
+        label: "Work",
+        email: "jane@work.com",
+      }),
+    );
+    expect(await screen.findByDisplayValue("ssh-ed25519 AAAA jane@work.com")).toBeInTheDocument();
+    expect(screen.getByLabelText("SSH key path")).toHaveValue(
+      "/home/jane/.ssh/gitswitch_work",
+    );
+  });
 });

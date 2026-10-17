@@ -2187,3 +2187,25 @@ select option {
     align-items: stretch;
   }
 }
+
+.ssh-public-key {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  margin-top: 0.25rem;
+  font-size: 0.8rem;
+}
+
+.ssh-public-key p {
+  margin: 0;
+}
+
+.ssh-public-key textarea {
+  font-family: monospace;
+  font-size: 0.75rem;
+  resize: none;
+}
+
+.ssh-public-key button {
+  align-self: flex-start;
+}
